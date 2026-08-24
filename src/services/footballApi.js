@@ -17,7 +17,6 @@ export const COMPETITIONS = {
     EUROPEAN_CHAMPIONSHIP: 'EC',
 }
 
-// ✅ Use Supabase Edge Function to fetch matches (No CORS issues)
 export async function getTodaysMatches(competition = 'PL') {
     try {
         const supabaseUrl = process.env.REACT_APP_SUPABASE_URL
@@ -46,7 +45,6 @@ export async function getTodaysMatches(competition = 'PL') {
     }
 }
 
-// ✅ FORMAT MATCH FOR DISPLAY
 export function formatMatch(match) {
     const homeTeam = match.homeTeam || {}
     const awayTeam = match.awayTeam || {}
