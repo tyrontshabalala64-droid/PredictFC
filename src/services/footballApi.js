@@ -1,15 +1,6 @@
- import axios from 'axios'
-import { supabase } from '../lib/supabase'
+ import { supabase } from '../lib/supabase'
 
 const FOOTBALL_DATA_KEY = '5ac44b9e7ae64f30891be70bacd04900'
-const FOOTBALL_DATA_URL = 'https://api.football-data.org/v4'
-
-// ✅ MULTIPLE FALLBACK PROXIES (Try these in order)
-const PROXIES = [
-  'https://api.allorigins.win/raw?url=',
-  'https://corsproxy.io/?',
-  'https://cors-anywhere.herokuapp.com/'
-]
 
 export const COMPETITIONS = {
     PREMIER_LEAGUE: 'PL',
@@ -26,114 +17,29 @@ export const COMPETITIONS = {
     EUROPEAN_CHAMPIONSHIP: 'EC',
 }
 
-// ✅ CACHE LENGTH: 1 hour (3600 seconds)
-const CACHE_DURATION = 3600
-
-// ✅ Fetch matches with database caching + multiple proxy fallbacks
+// ✅ Use Supabase Edge Function to fetch matches (No CORS issues)
 export async function getTodaysMatches(competition = 'PL') {
     try {
-        // 1. Check if we have a cached version in Supabase
-        const cacheKey = `matches-${competition}`
-        const { data: cachedData } = await supabase
-            .from('match_cache')
-            .select('data, created_at')
-            .eq('id', cacheKey)
-            .maybeSingle()
+        const supabaseUrl = process.env.REACT_APP_SUPABASE_URL
+        const functionUrl = `${supabaseUrl}/functions/v1/get-matches?competition=${competition}`
 
-        // 2. If cache is fresh (less than 1 hour old), use it
-        if (cachedData?.data && cachedData?.created_at) {
-            const cacheAge = Date.now() - new Date(cachedData.created_at).getTime()
-            if (cacheAge < CACHE_DURATION * 1000) {
-                console.log(`✅ Using cached data for ${competition}`)
-                return cachedData.data
-            }
-        }
-
-        // 3. Try each proxy until one works
-        let matchesResponse = null
-        let standingsResponse = null
-        let lastError = null
-
-        for (const proxy of PROXIES) {
-            try {
-                const today = new Date()
-                const future = new Date()
-                future.setDate(today.getDate() + 10)
-
-                const dateFrom = today.toISOString().split('T')[0]
-                const dateTo = future.toISOString().split('T')[0]
-
-                const matchesUrl = `${FOOTBALL_DATA_URL}/competitions/${competition}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`
-                const standingsUrl = `${FOOTBALL_DATA_URL}/competitions/${competition}/standings`
-
-                const [matchesRes, standingsRes] = await Promise.all([
-                    axios.get(`${proxy}${encodeURIComponent(matchesUrl)}`, {
-                        headers: { 'X-Auth-Token': FOOTBALL_DATA_KEY }
-                    }),
-                    axios.get(`${proxy}${encodeURIComponent(standingsUrl)}`, {
-                        headers: { 'X-Auth-Token': FOOTBALL_DATA_KEY }
-                    })
-                ])
-
-                if (matchesRes.data?.matches) {
-                    matchesResponse = matchesRes
-                    standingsResponse = standingsRes
-                    console.log(`✅ Using proxy: ${proxy}`)
-                    break
-                }
-            } catch (error) {
-                lastError = error
-                console.warn(`❌ Proxy failed: ${proxy}`)
-            }
-        }
-
-        // If no proxy worked, return cached data
-        if (!matchesResponse || !standingsResponse) {
-            console.error('All proxies failed:', lastError)
-            
-            // Try to return cached version even if expired
-            const { data: fallbackData } = await supabase
-                .from('match_cache')
-                .select('data')
-                .eq('id', cacheKey)
-                .maybeSingle()
-
-            if (fallbackData?.data) {
-                console.log(`✅ Using expired cache for ${competition} (fallback)`)
-                return fallbackData.data
-            }
-
-            return { matches: [], standingsMap: {} }
-        }
-
-        // 4. Extract standings
-        const standingsMap = {}
-        const table = standingsResponse.data?.standings?.[0]?.table || []
-        table.forEach(row => {
-            standingsMap[row.team?.id] = {
-                position: row.position,
-                played: row.playedGames || 0,
-                won: row.won || 0,
-                drawn: row.drawn || 0,
-                lost: row.lost || 0,
-                points: row.points || 0,
-                goalsFor: row.goalsFor || 0,
-                goalsAgainst: row.goalsAgainst || 0
+        const response = await fetch(functionUrl, {
+            headers: {
+                'Authorization': `Bearer ${process.env.REACT_APP_SUPABASE_ANON_KEY}`
             }
         })
 
-        const result = {
-            matches: matchesResponse.data?.matches || [],
-            standingsMap
+        if (!response.ok) {
+            console.error('Edge function error:', response.status)
+            return { matches: [], standingsMap: {} }
         }
 
-        // 5. Save to cache for 1 hour
-        await supabase
-            .from('match_cache')
-            .upsert({ id: cacheKey, data: result, created_at: new Date().toISOString() })
+        const data = await response.json()
 
-        return result
-
+        return {
+            matches: data.matches || [],
+            standingsMap: data.standingsMap || {}
+        }
     } catch (error) {
         console.error('Error fetching matches:', error)
         return { matches: [], standingsMap: {} }
