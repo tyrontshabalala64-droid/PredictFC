@@ -16,7 +16,8 @@ import {
   ChevronLeft,
   UserCircle,
   FileText,
-  Scale
+  Scale,
+  Mail
 } from 'lucide-react'
 
 export default function Settings() {
@@ -42,6 +43,12 @@ export default function Settings() {
                     label: t('edit_profile'), 
                     onClick: () => navigate('/profile'),
                     description: profile?.full_name || profile?.username || 'Set up your profile'
+                },
+                { 
+                    icon: Mail, 
+                    label: 'Email', 
+                    onClick: () => {},
+                    description: profile?.email || user?.email || 'No email'
                 },
                 { 
                     icon: Bell, 
@@ -106,7 +113,7 @@ export default function Settings() {
     ]
 
     return (
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 px-4 py-6 pb-20 transition-colors duration-200">
+        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 px-4 py-4 pb-20 transition-colors duration-200">
             <div className="flex items-center gap-3 mb-6">
                 <button 
                     onClick={() => navigate(-1)}
@@ -114,27 +121,33 @@ export default function Settings() {
                 >
                     <ChevronLeft size={24} className="text-gray-700 dark:text-gray-300" />
                 </button>
-                <h1 className="text-2xl font-bold text-gray-800 dark:text-white">
+                <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white">
                     {t('settings') || 'Settings'}
                 </h1>
             </div>
 
+            {/* User Card */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 mb-6 flex items-center gap-4 transition-colors duration-200">
-                <div className="w-12 h-12 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center text-gray-600 dark:text-gray-300 font-bold text-lg">
-                    {profile?.username?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'}
+                <div className="w-12 h-12 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center text-gray-600 dark:text-gray-300 font-bold text-lg overflow-hidden flex-shrink-0">
+                    {profile?.avatar_url ? (
+                        <img src={profile.avatar_url} alt={profile?.username} className="w-full h-full object-cover" />
+                    ) : (
+                        profile?.username?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'
+                    )}
                 </div>
-                <div>
-                    <p className="font-semibold text-gray-800 dark:text-white">{profile?.full_name || profile?.username || 'User'}</p>
-                    <p className="text-sm text-gray-400 dark:text-gray-500">{user?.email}</p>
+                <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-gray-800 dark:text-white truncate">{profile?.full_name || profile?.username || 'User'}</p>
+                    <p className="text-sm text-gray-400 dark:text-gray-500 truncate">{profile?.email || user?.email}</p>
                 </div>
                 <button 
                     onClick={() => navigate('/profile')}
-                    className="ml-auto text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                    className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 flex-shrink-0"
                 >
                     Edit
                 </button>
             </div>
 
+            {/* Settings Sections */}
             {settingsSections.map((section) => (
                 <div key={section.title} className="mb-6">
                     <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 px-2">
@@ -151,18 +164,18 @@ export default function Settings() {
                                         index !== section.items.length - 1 ? 'border-b border-gray-100 dark:border-gray-700' : ''
                                     }`}
                                 >
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-700">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <div className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-700 flex-shrink-0">
                                             <Icon size={18} className="text-gray-500 dark:text-gray-400" />
                                         </div>
-                                        <div className="text-left">
+                                        <div className="text-left min-w-0">
                                             <span className="text-gray-700 dark:text-gray-300 font-medium">{item.label}</span>
                                             {item.description && (
-                                                <p className="text-xs text-gray-400 dark:text-gray-500">{item.description}</p>
+                                                <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{item.description}</p>
                                             )}
                                         </div>
                                     </div>
-                                    <ChevronRight size={18} className="text-gray-400 dark:text-gray-600" />
+                                    <ChevronRight size={18} className="text-gray-400 dark:text-gray-600 flex-shrink-0 ml-2" />
                                 </button>
                             )
                         })}
@@ -170,6 +183,7 @@ export default function Settings() {
                 </div>
             ))}
 
+            {/* Stats Card */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 mb-6 transition-colors duration-200">
                 <div className="grid grid-cols-3 gap-4 text-center">
                     <div>
@@ -187,6 +201,7 @@ export default function Settings() {
                 </div>
             </div>
 
+            {/* Sign Out Button */}
             <button
                 onClick={handleSignOut}
                 className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-xl font-medium hover:bg-red-100 dark:hover:bg-red-900/50 transition"
@@ -195,6 +210,7 @@ export default function Settings() {
                 Sign Out
             </button>
 
+            {/* Version */}
             <div className="text-center mt-6">
                 <p className="text-xs text-gray-400 dark:text-gray-500">PredictFC v1.0.0</p>
             </div>

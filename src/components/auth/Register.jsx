@@ -1,249 +1,289 @@
- import React, { useState, useEffect } from 'react'
-import { useAuth } from '../../contexts/AuthContext'
-import { useToast } from '../../contexts/ToastContext'
+ import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, Loader } from 'lucide-react'
-import { isRegistrationAllowed, getCachedSettings } from '../../services/settingsService'
+import { useAuth } from '../../contexts/AuthContext'  // Fixed: ../../
+import { useToast } from '../../contexts/ToastContext'  // Fixed: ../../
+import { Eye, EyeOff, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
 
 export default function Register() {
-    const [email, setEmail] = useState('')
-    const [password, setPassword] = useState('')
-    const [username, setUsername] = useState('')
-    const [fullName, setFullName] = useState('')
-    const [phone, setPhone] = useState('')
-    const [error, setError] = useState('')
+    const [form, setForm] = useState({
+        username: '',
+        fullName: '',
+        email: '',
+        phone: '',
+        password: '',
+        confirmPassword: ''
+    })
     const [loading, setLoading] = useState(false)
     const [showPassword, setShowPassword] = useState(false)
-    const [registrationAllowed, setRegistrationAllowed] = useState(true)
-    const [checkingRegistration, setCheckingRegistration] = useState(true)
-    const [passwordStrength, setPasswordStrength] = useState({ level: 0, text: '', color: '' })
+    const [showConfirm, setShowConfirm] = useState(false)
+    const [error, setError] = useState('')
+    const [passwordStrength, setPasswordStrength] = useState({
+        score: 0,
+        label: 'Weak',
+        color: 'bg-red-500'
+    })
     const { signUp } = useAuth()
     const { showToast } = useToast()
     const navigate = useNavigate()
 
-    const settings = getCachedSettings()
-    const allowPhoneNumbers = settings?.allow_phone_numbers !== false
-    const minPasswordLength = settings?.min_password_length || 6
+    const checkPasswordStrength = (password) => {
+        let score = 0
+        if (password.length >= 6) score++
+        if (password.length >= 10) score++
+        if (/[a-z]/.test(password) && /[A-Z]/.test(password)) score++
+        if (/\d/.test(password)) score++
+        if (/[^a-zA-Z0-9]/.test(password)) score++
 
-    useEffect(() => {
-        const checkRegistration = async () => {
-            try {
-                const allowed = await isRegistrationAllowed()
-                setRegistrationAllowed(allowed)
-                if (!allowed) {
-                    setError('Registration is currently disabled. Please try again later.')
-                }
-            } catch (error) {
-                console.error('Error checking registration setting:', error)
-                setRegistrationAllowed(true)
-            } finally {
-                setCheckingRegistration(false)
-            }
-        }
-        checkRegistration()
-    }, [])
+        const levels = [
+            { score: 0, label: 'Very Weak', color: 'bg-red-500' },
+            { score: 1, label: 'Weak', color: 'bg-orange-500' },
+            { score: 2, label: 'Fair', color: 'bg-yellow-500' },
+            { score: 3, label: 'Good', color: 'bg-blue-500' },
+            { score: 4, label: 'Strong', color: 'bg-green-500' },
+            { score: 5, label: 'Very Strong', color: 'bg-green-600' }
+        ]
 
-    const checkPasswordStrength = (pass) => {
-        let strength = 0
-        if (pass.length >= minPasswordLength) strength += 1
-        if (pass.length >= 10) strength += 1
-        if (/[a-z]/.test(pass) && /[A-Z]/.test(pass)) strength += 1
-        if (/[0-9]/.test(pass)) strength += 1
-        if (/[^a-zA-Z0-9]/.test(pass)) strength += 1
-        
-        const levels = ['Weak', 'Fair', 'Good', 'Strong', 'Very Strong']
-        const colors = ['#ef4444', '#f59e0b', '#fbbf24', '#34d399', '#22c55e']
-        const level = Math.min(strength, 4)
-        
+        const level = levels.find(l => l.score === score) || levels[0]
         setPasswordStrength({
-            level: strength,
-            text: pass ? levels[level] : '',
-            color: pass ? colors[level] : '#e5e7eb'
+            score,
+            label: level.label,
+            color: level.color
         })
+    }
+
+    const handleChange = (e) => {
+        const { name, value } = e.target
+        setForm(prev => ({ ...prev, [name]: value }))
+        
+        if (name === 'password') {
+            checkPasswordStrength(value)
+        }
+    }
+
+    const validatePhone = (phone) => {
+        // South African phone number validation
+        const phoneRegex = /^(\+27|0)[6-8][0-9]{8}$/
+        return phoneRegex.test(phone)
     }
 
     const handleSubmit = async (e) => {
         e.preventDefault()
         setError('')
 
-        if (!registrationAllowed) {
-            setError('Registration is currently disabled. Please try again later.')
-            showToast('Registration is currently disabled', 'error')
+        // Validate username
+        if (form.username.length < 3) {
+            setError('Username must be at least 3 characters')
+            return
+        }
+
+        // Validate email
+        if (!form.email.includes('@')) {
+            setError('Please enter a valid email address')
+            return
+        }
+
+        // Validate phone (optional but if provided must be valid)
+        if (form.phone && !validatePhone(form.phone)) {
+            setError('Please enter a valid South African phone number (e.g. 0712345678 or +27712345678)')
+            return
+        }
+
+        // Validate password
+        if (form.password.length < 6) {
+            setError('Password must be at least 6 characters')
+            return
+        }
+
+        if (form.password !== form.confirmPassword) {
+            setError('Passwords do not match')
             return
         }
 
         setLoading(true)
-
-        const phoneRegex = /^(\+27|0)[6-8][0-9]{8}$/
-        if (phone && !phoneRegex.test(phone)) {
-            setError('Please enter a valid South African phone number (e.g., 0821234567 or +27821234567)')
-            showToast('Invalid phone number', 'error')
-            setLoading(false)
-            return
-        }
-
         try {
-            await signUp(email, password, username, fullName, phone)
-            showToast('Account created successfully! Please check your email to confirm.', 'success')
+            await signUp(
+                form.email,
+                form.password,
+                form.username,
+                form.fullName || form.username,
+                form.phone || null
+            )
+            showToast('Account created! Please check your email to confirm.', 'success')
             navigate('/login')
-        } catch (err) {
-            setError(err.message || 'Failed to sign up')
-            showToast(err.message || 'Failed to sign up', 'error')
+        } catch (error) {
+            console.error('Registration error:', error)
+            if (error.message.includes('User already registered')) {
+                setError('An account with this email already exists. Please login.')
+            } else {
+                setError(error.message || 'Failed to create account')
+            }
+            showToast(error.message || 'Failed to create account', 'error')
         } finally {
             setLoading(false)
         }
     }
 
-    if (checkingRegistration) {
-        return (
-            <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4">
-                <div className="text-center">
-                    <Loader className="w-8 h-8 text-gray-400 animate-spin mx-auto" />
-                    <p className="text-gray-500 dark:text-gray-400 mt-2">Loading...</p>
-                </div>
-            </div>
-        )
-    }
-
-    if (!registrationAllowed) {
-        return (
-            <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4">
-                <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
-                    <div className="text-5xl mb-4">🚫</div>
-                    <h1 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">Registration Disabled</h1>
-                    <p className="text-gray-500 dark:text-gray-400">
-                        New user registration is currently disabled. Please check back later.
-                    </p>
-                    <Link 
-                        to="/login"
-                        className="inline-block mt-6 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white underline"
-                    >
-                        Back to Login
-                    </Link>
-                </div>
-            </div>
-        )
-    }
-
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4 transition-colors duration-200">
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-8 max-w-md w-full transition-colors duration-200">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 sm:p-8 max-w-md w-full">
                 <div className="text-center mb-8">
                     <div className="text-5xl mb-3">⚽</div>
-                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">PredictFC</h1>
-                    <p className="text-gray-500 dark:text-gray-400 mt-1">Join the prediction community</p>
+                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Create Account</h1>
+                    <p className="text-gray-500 dark:text-gray-400 mt-1">Join PredictFC today</p>
                 </div>
 
                 {error && (
-                    <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg mb-4">
-                        {error}
+                    <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg mb-4 flex items-start gap-2">
+                        <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                        <span>{error}</span>
                     </div>
                 )}
 
                 <form onSubmit={handleSubmit}>
-                    <div className="mb-3">
-                        <label className="block text-gray-700 dark:text-gray-300 font-medium mb-1">Username *</label>
+                    {/* Username */}
+                    <div className="mb-4">
+                        <label className="block text-gray-700 dark:text-gray-300 font-medium mb-2">
+                            Username *
+                        </label>
                         <input
                             type="text"
-                            value={username}
-                            onChange={(e) => setUsername(e.target.value)}
+                            name="username"
+                            value={form.username}
+                            onChange={handleChange}
                             className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-800 dark:focus:ring-gray-400 bg-white dark:bg-gray-700 text-gray-800 dark:text-white transition-colors duration-200"
-                            placeholder="footballfan123"
+                            placeholder="johndoe"
                             required
+                            minLength="3"
                         />
                     </div>
 
-                    <div className="mb-3">
-                        <label className="block text-gray-700 dark:text-gray-300 font-medium mb-1">Full Name *</label>
+                    {/* Full Name */}
+                    <div className="mb-4">
+                        <label className="block text-gray-700 dark:text-gray-300 font-medium mb-2">
+                            Full Name *
+                        </label>
                         <input
                             type="text"
-                            value={fullName}
-                            onChange={(e) => setFullName(e.target.value)}
+                            name="fullName"
+                            value={form.fullName}
+                            onChange={handleChange}
                             className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-800 dark:focus:ring-gray-400 bg-white dark:bg-gray-700 text-gray-800 dark:text-white transition-colors duration-200"
                             placeholder="John Doe"
                             required
                         />
                     </div>
 
-                    <div className="mb-3">
-                        <label className="block text-gray-700 dark:text-gray-300 font-medium mb-1">Email *</label>
+                    {/* Email */}
+                    <div className="mb-4">
+                        <label className="block text-gray-700 dark:text-gray-300 font-medium mb-2">
+                            Email *
+                        </label>
                         <input
                             type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
+                            name="email"
+                            value={form.email}
+                            onChange={handleChange}
                             className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-800 dark:focus:ring-gray-400 bg-white dark:bg-gray-700 text-gray-800 dark:text-white transition-colors duration-200"
                             placeholder="you@example.com"
                             required
                         />
                     </div>
 
-                    {allowPhoneNumbers && (
-                        <div className="mb-3">
-                            <label className="block text-gray-700 dark:text-gray-300 font-medium mb-1">Phone Number</label>
-                            <input
-                                type="tel"
-                                value={phone}
-                                onChange={(e) => setPhone(e.target.value)}
-                                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-800 dark:focus:ring-gray-400 bg-white dark:bg-gray-700 text-gray-800 dark:text-white transition-colors duration-200"
-                                placeholder="0821234567"
-                            />
-                            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">South African number (e.g., 0821234567)</p>
-                        </div>
-                    )}
+                    {/* Phone */}
+                    <div className="mb-4">
+                        <label className="block text-gray-700 dark:text-gray-300 font-medium mb-2">
+                            Phone (Optional)
+                        </label>
+                        <input
+                            type="tel"
+                            name="phone"
+                            value={form.phone}
+                            onChange={handleChange}
+                            className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-800 dark:focus:ring-gray-400 bg-white dark:bg-gray-700 text-gray-800 dark:text-white transition-colors duration-200"
+                            placeholder="0712345678"
+                        />
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">South African number (e.g. 0712345678)</p>
+                    </div>
 
-                    <div className="mb-3">
-                        <label className="block text-gray-700 dark:text-gray-300 font-medium mb-1">Password *</label>
+                    {/* Password */}
+                    <div className="mb-2">
+                        <label className="block text-gray-700 dark:text-gray-300 font-medium mb-2">
+                            Password *
+                        </label>
                         <div className="relative">
                             <input
                                 type={showPassword ? 'text' : 'password'}
-                                value={password}
-                                onChange={(e) => {
-                                    setPassword(e.target.value)
-                                    checkPasswordStrength(e.target.value)
-                                }}
+                                name="password"
+                                value={form.password}
+                                onChange={handleChange}
                                 className="w-full px-4 py-3 pr-12 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-800 dark:focus:ring-gray-400 bg-white dark:bg-gray-700 text-gray-800 dark:text-white transition-colors duration-200"
                                 placeholder="Min 6 characters"
                                 required
-                                minLength={minPasswordLength}
+                                minLength="6"
                             />
                             <button
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
                             >
                                 {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                             </button>
                         </div>
-                        {password && (
-                            <div className="mt-2">
-                                <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
-                                    <div 
-                                        className="h-full transition-all duration-300 rounded-full"
-                                        style={{ 
-                                            width: `${(passwordStrength.level / 5) * 100}%`,
-                                            background: passwordStrength.color 
-                                        }}
-                                    />
-                                </div>
-                                <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                    {passwordStrength.text}
-                                </span>
-                            </div>
-                        )}
-                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">At least {minPasswordLength} characters</p>
                     </div>
 
+                    {/* Password Strength Meter */}
+                    {form.password.length > 0 && (
+                        <div className="mb-4">
+                            <div className="flex items-center gap-2 mb-1">
+                                <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                    <div 
+                                        className={`h-full ${passwordStrength.color} transition-all duration-300`}
+                                        style={{ width: `${(passwordStrength.score / 5) * 100}%` }}
+                                    />
+                                </div>
+                                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                                    {passwordStrength.label}
+                                </span>
+                            </div>
+                            <p className="text-xs text-gray-400 dark:text-gray-500">
+                                Use 6+ characters with letters, numbers & symbols
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Confirm Password */}
                     <div className="mb-6">
-                        <label className="flex items-start gap-3 cursor-pointer">
-                            <input
-                                type="checkbox"
-                                required
-                                className="w-5 h-5 accent-gray-800 dark:accent-gray-400 mt-0.5"
-                            />
-                            <span className="text-sm text-gray-600 dark:text-gray-400">
-                                I agree to the <Link to="/terms" className="text-gray-800 dark:text-white font-semibold hover:underline">Terms of Service</Link> and <Link to="/privacy" className="text-gray-800 dark:text-white font-semibold hover:underline">Privacy Policy</Link>
-                            </span>
+                        <label className="block text-gray-700 dark:text-gray-300 font-medium mb-2">
+                            Confirm Password *
                         </label>
+                        <div className="relative">
+                            <input
+                                type={showConfirm ? 'text' : 'password'}
+                                name="confirmPassword"
+                                value={form.confirmPassword}
+                                onChange={handleChange}
+                                className="w-full px-4 py-3 pr-12 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-800 dark:focus:ring-gray-400 bg-white dark:bg-gray-700 text-gray-800 dark:text-white transition-colors duration-200"
+                                placeholder="Confirm your password"
+                                required
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowConfirm(!showConfirm)}
+                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
+                            >
+                                {showConfirm ? <EyeOff size={20} /> : <Eye size={20} />}
+                            </button>
+                        </div>
+                        {form.confirmPassword && form.password !== form.confirmPassword && (
+                            <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                                <XCircle size={12} /> Passwords do not match
+                            </p>
+                        )}
+                        {form.confirmPassword && form.password === form.confirmPassword && form.password.length >= 6 && (
+                            <p className="text-xs text-green-500 mt-1 flex items-center gap-1">
+                                <CheckCircle size={12} /> Passwords match
+                            </p>
+                        )}
                     </div>
 
                     <button
@@ -251,26 +291,24 @@ export default function Register() {
                         disabled={loading}
                         className="w-full bg-gray-800 dark:bg-white text-white dark:text-gray-800 py-3 rounded-lg font-semibold hover:bg-gray-900 dark:hover:bg-gray-100 transition disabled:opacity-50"
                     >
-                        {loading ? 'Creating account...' : 'Create Account'}
+                        {loading ? 'Creating Account...' : 'Create Account'}
                     </button>
                 </form>
 
-                <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-                    <p className="text-center text-gray-500 dark:text-gray-400 text-sm">
-                        Already have an account?{' '}
-                        <Link to="/login" className="text-gray-800 dark:text-white font-semibold hover:underline">
-                            Sign In
-                        </Link>
-                    </p>
-                    <p className="text-center text-gray-400 dark:text-gray-500 text-xs mt-2">
-                        Forgot your password?{' '}
-                        <button 
-                            onClick={() => navigate('/login')}
-                            className="text-gray-500 dark:text-gray-400 hover:underline"
-                        >
-                            Reset it here
-                        </button>
-                    </p>
+                <p className="text-center text-gray-500 dark:text-gray-400 mt-4 text-sm">
+                    Already have an account?{' '}
+                    <Link to="/login" className="text-gray-800 dark:text-white font-semibold hover:underline">
+                        Sign In
+                    </Link>
+                </p>
+
+                <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700 text-center">
+                    <Link 
+                        to="/" 
+                        className="text-sm text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition"
+                    >
+                        ← Back to Home
+                    </Link>
                 </div>
             </div>
         </div>

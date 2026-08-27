@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import FollowButton from '../components/follow/FollowButton'
-import { Users, UserPlus, ArrowLeft, Loader } from 'lucide-react'
+import { Users, UserPlus, ArrowLeft, Loader, ChevronLeft } from 'lucide-react'
 
 export default function Followers() {
     const { userId, type } = useParams()
@@ -39,15 +39,7 @@ export default function Followers() {
     }
 
     useEffect(() => {
-        console.log('=== FOLLOWERS PAGE DEBUG ===')
-        console.log('Current pathname:', location.pathname)
-        console.log('userId from params:', userId)
-        console.log('type from params:', type)
-        
         const { targetId, actualType } = getActualParams()
-        
-        console.log('Determined userId:', targetId)
-        console.log('Determined type:', actualType)
         
         if (!targetId) {
             setError('No user specified. Please log in or navigate to a valid profile.')
@@ -75,12 +67,10 @@ export default function Followers() {
         setError(null)
         
         try {
-            console.log('Loading data for:', { targetId, targetType })
-            
             // Get user profile
             const { data: profileData, error: profileError } = await supabase
                 .from('profiles')
-                .select('id, username, full_name, avatar_url')
+                .select('id, username, full_name, avatar_url, email')
                 .eq('id', targetId)
                 .single()
 
@@ -89,7 +79,6 @@ export default function Followers() {
                 throw profileError
             }
             setProfile(profileData)
-            console.log('Profile loaded:', profileData)
 
             // Get followers or following
             let query
@@ -104,7 +93,8 @@ export default function Followers() {
                             username,
                             full_name,
                             avatar_url,
-                            is_verified
+                            is_verified,
+                            email
                         )
                     `)
                     .eq('following_id', targetId)
@@ -119,7 +109,8 @@ export default function Followers() {
                             username,
                             full_name,
                             avatar_url,
-                            is_verified
+                            is_verified,
+                            email
                         )
                     `)
                     .eq('follower_id', targetId)
@@ -133,8 +124,6 @@ export default function Followers() {
                 console.error('Query error:', error)
                 throw error
             }
-
-            console.log('Raw data:', data)
 
             // Extract users from the nested structure
             let userList = []
@@ -150,7 +139,6 @@ export default function Followers() {
                     .filter(profile => profile !== null && profile !== undefined)
             }
 
-            console.log('User list:', userList)
             setUsers(userList)
 
         } catch (error) {
@@ -165,9 +153,9 @@ export default function Followers() {
     if (loading) {
         return (
             <div className="max-w-2xl mx-auto px-4 py-6">
-                <div className="bg-white rounded-xl shadow-md p-8 text-center">
-                    <Loader className="w-8 h-8 text-gray-400 animate-spin mx-auto" />
-                    <p className="text-gray-500 mt-4">Loading...</p>
+                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-8 text-center">
+                    <Loader className="w-8 h-8 text-gray-400 dark:text-gray-500 animate-spin mx-auto" />
+                    <p className="text-gray-500 dark:text-gray-400 mt-4">Loading...</p>
                 </div>
             </div>
         )
@@ -177,15 +165,14 @@ export default function Followers() {
     if (error) {
         return (
             <div className="max-w-2xl mx-auto px-4 py-6">
-                <div className="bg-white rounded-xl shadow-md p-6">
-                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
+                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg">
                         <p className="font-medium">Error loading data</p>
                         <p className="text-sm">{error}</p>
-                        <p className="text-xs text-gray-500 mt-1">Path: {location.pathname}</p>
                         <div className="flex gap-3 mt-3">
                             <button 
                                 onClick={() => navigate(-1)}
-                                className="text-sm text-red-600 hover:text-red-800 underline"
+                                className="text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 underline"
                             >
                                 Go Back
                             </button>
@@ -196,7 +183,7 @@ export default function Followers() {
                                         loadData(targetId, actualType)
                                     }
                                 }}
-                                className="text-sm text-blue-600 hover:text-blue-800 underline"
+                                className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline"
                             >
                                 Retry
                             </button>
@@ -211,11 +198,11 @@ export default function Followers() {
     if (!profile) {
         return (
             <div className="max-w-2xl mx-auto px-4 py-6">
-                <div className="bg-white rounded-xl shadow-md p-8 text-center">
-                    <p className="text-gray-500">User not found</p>
+                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-8 text-center">
+                    <p className="text-gray-500 dark:text-gray-400">User not found</p>
                     <button 
                         onClick={() => navigate('/')}
-                        className="mt-4 text-gray-600 hover:text-gray-800 underline"
+                        className="mt-4 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 underline"
                     >
                         Go Home
                     </button>
@@ -228,30 +215,32 @@ export default function Followers() {
     const displayType = type || (location.pathname.includes('followers') ? 'followers' : 'following')
 
     return (
-        <div className="max-w-2xl mx-auto px-4 py-6">
+        <div className="max-w-2xl mx-auto px-4 py-4 pb-20">
             {/* Header */}
-            <div className="bg-white rounded-xl shadow-md p-4 mb-6">
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 mb-4">
                 <div className="flex items-center gap-3">
                     <Link 
                         to={`/profile/${profile.id}`}
-                        className="p-2 hover:bg-gray-100 rounded-lg transition"
+                        className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
                     >
-                        <ArrowLeft size={20} className="text-gray-600" />
+                        <ChevronLeft size={20} className="text-gray-600 dark:text-gray-400" />
                     </Link>
-                    <div>
-                        <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                        <h1 className="text-lg sm:text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
                             {displayType === 'followers' ? (
-                                <Users size={20} className="text-gray-500" />
+                                <Users size={20} className="text-gray-500 dark:text-gray-400 flex-shrink-0" />
                             ) : (
-                                <UserPlus size={20} className="text-gray-500" />
+                                <UserPlus size={20} className="text-gray-500 dark:text-gray-400 flex-shrink-0" />
                             )}
-                            {displayType === 'followers' ? 'Followers' : 'Following'}
+                            <span className="truncate">
+                                {displayType === 'followers' ? 'Followers' : 'Following'}
+                            </span>
                         </h1>
-                        <p className="text-sm text-gray-500">
+                        <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
                             @{profile?.username || 'user'}
                         </p>
                     </div>
-                    <div className="ml-auto text-sm text-gray-400">
+                    <div className="text-sm text-gray-400 dark:text-gray-500 flex-shrink-0">
                         {users.length} {displayType === 'followers' ? 'followers' : 'following'}
                     </div>
                 </div>
@@ -259,14 +248,14 @@ export default function Followers() {
 
             {/* Users List */}
             {users.length === 0 ? (
-                <div className="text-center py-12 bg-white rounded-xl shadow-md">
+                <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
                     <div className="text-4xl mb-4">👀</div>
-                    <p className="text-gray-500 text-lg">
+                    <p className="text-gray-500 dark:text-gray-400 text-lg">
                         {displayType === 'followers' 
                             ? 'No followers yet' 
                             : 'Not following anyone yet'}
                     </p>
-                    <p className="text-gray-400 text-sm mt-1">
+                    <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">
                         {displayType === 'followers' 
                             ? 'When people follow you, they\'ll appear here' 
                             : 'Follow other users to see them here'}
@@ -274,7 +263,7 @@ export default function Followers() {
                     {displayType === 'following' && user?.id === profile?.id && (
                         <Link 
                             to="/community"
-                            className="inline-block mt-4 text-gray-600 hover:text-gray-800 underline"
+                            className="inline-block mt-4 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 underline"
                         >
                             Find people to follow
                         </Link>
@@ -285,13 +274,13 @@ export default function Followers() {
                     {users.map((userItem) => (
                         <div 
                             key={userItem.id} 
-                            className="bg-white rounded-xl shadow-md p-4 flex items-center justify-between hover:shadow-lg transition"
+                            className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 flex items-center justify-between hover:shadow-md transition"
                         >
                             <Link 
                                 to={`/profile/${userItem.id}`} 
-                                className="flex items-center gap-3 hover:opacity-80 flex-1"
+                                className="flex items-center gap-3 hover:opacity-80 flex-1 min-w-0"
                             >
-                                <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 font-bold text-sm overflow-hidden flex-shrink-0">
+                                <div className="w-10 h-10 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center text-gray-600 dark:text-gray-300 font-bold text-sm overflow-hidden flex-shrink-0">
                                     {userItem.avatar_url ? (
                                         <img 
                                             src={userItem.avatar_url} 
@@ -302,27 +291,29 @@ export default function Followers() {
                                         userItem.username?.[0]?.toUpperCase() || 'U'
                                     )}
                                 </div>
-                                <div>
-                                    <div className="font-semibold text-gray-800 flex items-center gap-1.5">
+                                <div className="min-w-0">
+                                    <div className="font-semibold text-gray-800 dark:text-white flex items-center gap-1.5 truncate">
                                         {userItem.full_name || userItem.username}
                                         {userItem.is_verified && (
-                                            <span className="text-blue-500 text-sm font-bold">✓</span>
+                                            <span className="text-blue-500 text-sm font-bold flex-shrink-0">✓</span>
                                         )}
                                     </div>
-                                    <div className="text-sm text-gray-500">@{userItem.username}</div>
+                                    <div className="text-sm text-gray-500 dark:text-gray-400 truncate">@{userItem.username}</div>
                                 </div>
                             </Link>
                             {userItem.id !== user?.id && (
-                                <FollowButton 
-                                    userId={userItem.id} 
-                                    username={userItem.username}
-                                    onFollowChange={() => {
-                                        const { targetId, actualType } = getActualParams()
-                                        if (targetId && actualType) {
-                                            loadData(targetId, actualType)
-                                        }
-                                    }}
-                                />
+                                <div className="flex-shrink-0 ml-2">
+                                    <FollowButton 
+                                        userId={userItem.id} 
+                                        username={userItem.username}
+                                        onFollowChange={() => {
+                                            const { targetId, actualType } = getActualParams()
+                                            if (targetId && actualType) {
+                                                loadData(targetId, actualType)
+                                            }
+                                        }}
+                                    />
+                                </div>
                             )}
                         </div>
                     ))}

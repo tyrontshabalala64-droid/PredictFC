@@ -75,7 +75,7 @@ export function AuthProvider({ children }) {
         }
     }
 
-    // ✅ SIGN UP with email normalization + duplicate detection
+    // ✅ SIGN UP with email normalization + save email to profiles
     const signUp = async (email, password, username, fullName, phone) => {
         try {
             // Normalize email: lowercase + trim
@@ -95,14 +95,14 @@ export function AuthProvider({ children }) {
             if (error) throw error
             
             if (data.user) {
-                // Update profile with normalized email and other fields
+                // ✅ Save email to profiles table
                 await supabase
                     .from('profiles')
                     .update({ 
                         phone: phone,
                         full_name: fullName,
                         username: username,
-                        email: normalizedEmail
+                        email: normalizedEmail  // ← Store email in profiles
                     })
                     .eq('id', data.user.id)
             }

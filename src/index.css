@@ -154,3 +154,47 @@ body {
 .pulse-live {
   animation: pulse 1.5s ease-in-out infinite;
 }
+/* ============================================
+   HIDE SCROLLBAR BUT KEEP SCROLLING
+   ============================================ */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* ============================================
+   SMOOTH SCROLL SNAP
+   ============================================ */
+.scroll-smooth {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ============================================
+   MOBILE TOUCH IMPROVEMENTS
+   ============================================ */
+@media (max-width: 640px) {
+  /* Better touch targets */
+  button, 
+  a,
+  input,
+  select,
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Prevent zoom on input focus (iOS) */
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+  
+  /* Better spacing for mobile */
+  .px-4 {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}

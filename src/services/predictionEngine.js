@@ -1,86 +1,456 @@
- // ============================================
-// PREDICTION ENGINE (Daily Deterministic)
+ // src/services/predictionEngine.js
+import { supabase } from '../lib/supabase'  // ✅ ADD THIS IMPORT
+
+// ============================================
+// PREDICTION ENGINE v2.0 - DATA-DRIVEN
 // ============================================
 
-// Generate a stable seed based on match ID + date
-function generateSeed(matchId) {
-    const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
-    const seedString = `${matchId}-${today}`
-    let seed = 0
-    for (let i = 0; i < seedString.length; i++) {
-        seed = ((seed << 5) - seed) + seedString.charCodeAt(i)
-        seed |= 0
-    }
-    return Math.abs(seed)
-}
+/**
+ * Generate REAL predictions based on actual team data
+ * Uses: Form, H2H, League Position, Goals, Home/Away
+ */
 
-// Seeded random function (returns 0 to 1)
-function seededRandom(seed) {
-    let x = Math.sin(seed) * 10000
-    return x - Math.floor(x)
-}
-
-// Calculate strength from team stats
-function calculateStrength(stats) {
-    if (!stats) return 50
-    const played = stats.played || 1
-    const winRate = (stats.won || 0) / played
-    const goalDiff = (stats.goalsFor || 0) - (stats.goalsAgainst || 0)
-    const points = stats.points || 0
-    const strength = (winRate * 40) + (points * 0.5) + (goalDiff * 2)
-    return Math.max(10, Math.min(90, strength))
-}
-
-// Calculate confidence
-function calculateConfidence(homeStrength, awayStrength) {
-    const strengthDiff = Math.abs(homeStrength - awayStrength)
-    if (strengthDiff > 30) return 'High'
-    if (strengthDiff > 15) return 'Medium'
-    return 'Low'
-}
-
-// ✅ MAIN PREDICTION FUNCTION (Stable for the day)
-export function generatePrediction(matchId, homeStats, awayStats) {
-    const seed = generateSeed(matchId)
-    const random = seededRandom(seed)
-
-    const homeStrength = calculateStrength(homeStats)
-    const awayStrength = calculateStrength(awayStats)
-
-    // Match Result (1X2)
-    let matchResult = 'Draw'
-    if (homeStrength > awayStrength * 1.2) matchResult = 'Home Win'
-    else if (awayStrength > homeStrength * 1.2) matchResult = 'Away Win'
-
-    // Over/Under 2.5
-    const homeGoals = homeStats?.goalsFor || 0
-    const awayGoals = awayStats?.goalsFor || 0
-    const totalAvgGoals = (homeGoals + awayGoals) / 2
-    let overUnder = 'Under 2.5'
-    if (totalAvgGoals > 2.5) overUnder = 'Over 2.5'
-
-    // BTTS
-    const homeScored = homeGoals >= 1
-    const awayScored = awayGoals >= 1
-    let btts = 'No'
-    if (homeScored && awayScored) btts = 'Yes'
-
-    // Hybrid Twist (Using seed, not Math.random)
-    // 10% chance to change one prediction
-    if (random < 0.1) {
-        matchResult = matchResult === 'Home Win' ? 'Draw' : matchResult === 'Draw' ? 'Away Win' : 'Home Win'
-    } else if (random < 0.2) {
-        overUnder = overUnder === 'Over 2.5' ? 'Under 2.5' : 'Over 2.5'
-    } else if (random < 0.3) {
-        btts = btts === 'Yes' ? 'No' : 'Yes'
+// ============================================
+// 1. TEAM RATING CALCULATION
+// ============================================
+export function calculateTeamRating(teamStats, isHome = true) {
+    if (!teamStats) {
+        return {
+            overall: 50,
+            attack: 50,
+            defense: 50,
+            form: 50,
+            homeAdvantage: isHome ? 5 : 0,
+            winRate: 33,
+            goalsPerGame: 1,
+            concededPerGame: 1,
+            ppg: 1.0
+        }
     }
 
-    const confidence = calculateConfidence(homeStrength, awayStrength)
-
+    const played = teamStats.played || 1
+    const won = teamStats.won || 0
+    const drawn = teamStats.drawn || 0
+    const lost = teamStats.lost || 0
+    const goalsFor = teamStats.goalsFor || 0
+    const goalsAgainst = teamStats.goalsAgainst || 0
+    
+    // Win rate (0-100)
+    const winRate = (won / played) * 100
+    
+    // Points per game (0-100)
+    const points = teamStats.points || 0
+    const ppg = (points / played) * 30
+    
+    // Goal difference per game
+    const gdPerGame = (goalsFor - goalsAgainst) / played
+    const goalDiffScore = Math.max(0, Math.min(100, (gdPerGame * 20) + 50))
+    
+    // Attack rating (goals per game) - ROUNDED
+    const goalsPerGame = Math.round(goalsFor / played)
+    const attackRating = Math.max(0, Math.min(100, (goalsPerGame * 25) + 20))
+    
+    // Defense rating (goals conceded per game) - ROUNDED
+    const concededPerGame = Math.round(goalsAgainst / played)
+    const defenseRating = Math.max(0, Math.min(100, 100 - (concededPerGame * 25)))
+    
+    // Form (last 5 matches)
+    const form = teamStats.form || 'DLWWL'
+    const formScore = calculateFormScore(form)
+    
+    // Overall rating
+    const overall = (winRate * 0.35) + (ppg * 0.25) + (goalDiffScore * 0.20) + (formScore * 0.20)
+    
+    // Home advantage bonus
+    const homeAdvantage = isHome ? 5 : 0
+    
     return {
+        overall: Math.round(Math.max(0, Math.min(100, overall + homeAdvantage))),
+        attack: Math.round(Math.max(0, Math.min(100, attackRating))),
+        defense: Math.round(Math.max(0, Math.min(100, defenseRating))),
+        form: Math.round(formScore),
+        homeAdvantage: homeAdvantage,
+        winRate: Math.round(winRate),
+        goalsPerGame: goalsPerGame,
+        concededPerGame: concededPerGame,
+        ppg: parseFloat(ppg.toFixed(2))
+    }
+}
+
+function calculateFormScore(form) {
+    if (!form) return 50
+    let score = 0
+    let total = 0
+    for (const char of form.toUpperCase()) {
+        if (char === 'W') { score += 3; total += 3 }
+        else if (char === 'D') { score += 1; total += 3 }
+        else if (char === 'L') { total += 3 }
+        else if (char === ' ') { continue }
+        else { total += 3 }
+    }
+    return total > 0 ? (score / total) * 100 : 50
+}
+
+// ============================================
+// 2. HEAD-TO-HEAD ANALYSIS
+// ============================================
+export function calculateHeadToHead(h2hData) {
+    if (!h2hData || h2hData.length === 0) {
+        return {
+            homeWins: 0,
+            draws: 0,
+            awayWins: 0,
+            totalGames: 0,
+            homeWinRate: 0,
+            drawRate: 0,
+            awayWinRate: 0,
+            homeAdvantage: 0
+        }
+    }
+
+    let homeWins = 0
+    let draws = 0
+    let awayWins = 0
+    
+    h2hData.forEach(match => {
+        const homeScore = match.home_score || 0
+        const awayScore = match.away_score || 0
+        if (homeScore > awayScore) homeWins++
+        else if (homeScore === awayScore) draws++
+        else awayWins++
+    })
+    
+    const totalGames = h2hData.length
+    const homeWinRate = homeWins / totalGames
+    const awayWinRate = awayWins / totalGames
+    const drawRate = draws / totalGames
+    
+    const homeAdvantage = (homeWinRate - awayWinRate) * 50
+    
+    return {
+        homeWins,
+        draws,
+        awayWins,
+        totalGames,
+        homeWinRate: Math.round(homeWinRate * 100),
+        drawRate: Math.round(drawRate * 100),
+        awayWinRate: Math.round(awayWinRate * 100),
+        homeAdvantage: Math.round(homeAdvantage)
+    }
+}
+
+// ============================================
+// 3. MATCH PREDICTION (MAIN FUNCTION)
+// ============================================
+export function generatePrediction(match, homeStats, awayStats, h2hData) {
+    // Calculate team ratings
+    const homeRating = calculateTeamRating(homeStats, true)
+    const awayRating = calculateTeamRating(awayStats, false)
+    
+    // Calculate H2H
+    const h2h = calculateHeadToHead(h2hData)
+    
+    // Combine: Overall Rating + H2H + Home Advantage
+    const homeOverall = homeRating.overall + (h2h.homeAdvantage * 0.3)
+    const awayOverall = awayRating.overall - (h2h.homeAdvantage * 0.1)
+    
+    // Expected Goals - ROUNDED TO WHOLE NUMBERS
+    const homeExpectedGoals = Math.round(((homeRating.goalsPerGame || 1) + (awayRating.concededPerGame || 1)) / 2)
+    const awayExpectedGoals = Math.round(((awayRating.goalsPerGame || 1) + (homeRating.concededPerGame || 1)) / 2)
+    const totalExpectedGoals = homeExpectedGoals + awayExpectedGoals
+    
+    // Match Result Probabilities
+    const totalStrength = homeOverall + awayOverall
+    const homeProb = (homeOverall / totalStrength) * 0.80 + 0.20
+    const awayProb = (awayOverall / totalStrength) * 0.80 + 0.20
+    const drawProb = 1 - homeProb - awayProb
+    
+    // Determine result
+    let matchResult = 'Draw'
+    let resultConfidence = 'Low'
+    
+    if (homeProb > drawProb && homeProb > awayProb) {
+        matchResult = 'Home Win'
+    } else if (awayProb > drawProb && awayProb > homeProb) {
+        matchResult = 'Away Win'
+    }
+    
+    // Confidence level
+    const maxProb = Math.max(homeProb, drawProb, awayProb)
+    if (maxProb > 0.55) resultConfidence = 'High'
+    else if (maxProb > 0.42) resultConfidence = 'Medium'
+    
+    // Over/Under 2.5 - based on rounded expected goals
+    const overUnder = totalExpectedGoals >= 3 ? 'Over 2.5' : 'Under 2.5'
+    const overConfidence = Math.abs(totalExpectedGoals - 2.5) > 1 ? 'High' : 'Medium'
+    
+    // BTTS (Both Teams to Score)
+    const homeScoreProb = homeExpectedGoals > 0
+    const awayScoreProb = awayExpectedGoals > 0
+    const btts = (homeScoreProb && awayScoreProb) ? 'Yes' : 'No'
+    const bttsConfidence = (homeExpectedGoals > 1 && awayExpectedGoals > 1) ? 'High' : 'Medium'
+    
+    // Correct Score predictions - using rounded goals
+    const correctScores = generateCorrectScores(homeExpectedGoals, awayExpectedGoals)
+    
+    // Half-Time / Full-Time
+    const htft = generateHTFT(homeProb, drawProb, awayProb)
+    
+    return {
+        // Match Result
         matchResult,
+        resultConfidence,
+        probabilities: {
+            home: Math.round(homeProb * 100),
+            draw: Math.round(drawProb * 100),
+            away: Math.round(awayProb * 100)
+        },
+        
+        // Over/Under
         overUnder,
+        overConfidence,
+        expectedGoals: {
+            home: homeExpectedGoals,
+            away: awayExpectedGoals,
+            total: totalExpectedGoals
+        },
+        
+        // BTTS
         btts,
-        confidence
+        bttsConfidence,
+        
+        // Correct Score (Top 3)
+        correctScores: correctScores.slice(0, 3),
+        
+        // Half-Time / Full-Time
+        htft,
+        
+        // Team Ratings (for display)
+        ratings: {
+            home: homeRating,
+            away: awayRating
+        },
+        
+        // H2H Summary
+        h2h: {
+            homeWins: h2h.homeWins,
+            draws: h2h.draws,
+            awayWins: h2h.awayWins,
+            total: h2h.totalGames
+        },
+        
+        // Overall Confidence
+        confidence: calculateOverallConfidence(homeProb, drawProb, awayProb, totalExpectedGoals),
+        
+        // Advice
+        advice: generateAdvice(matchResult, resultConfidence, totalExpectedGoals, h2h),
+        
+        // Timestamp
+        generatedAt: new Date().toISOString()
+    }
+}
+
+// ============================================
+// 4. CORRECT SCORE GENERATION
+// ============================================
+function generateCorrectScores(homeGoals, awayGoals) {
+    const scores = []
+    const range = 3
+    
+    // If goals are 0, use 1 as minimum for probability calculation
+    const hLambda = Math.max(homeGoals, 1)
+    const aLambda = Math.max(awayGoals, 1)
+    
+    for (let h = 0; h <= range; h++) {
+        for (let a = 0; a <= range; a++) {
+            const prob = poissonProbability(h, hLambda) * poissonProbability(a, aLambda)
+            scores.push({ home: h, away: a, probability: prob })
+        }
+    }
+    
+    // Sort by probability
+    scores.sort((a, b) => b.probability - a.probability)
+    return scores.map(s => ({
+        ...s,
+        display: `${s.home}-${s.away}`,
+        probability: (s.probability * 100).toFixed(1) + '%'
+    }))
+}
+
+function poissonProbability(k, lambda) {
+    if (lambda === 0) return k === 0 ? 1 : 0
+    const e = Math.exp(-lambda)
+    let factorial = 1
+    for (let i = 2; i <= k; i++) factorial *= i
+    return (e * Math.pow(lambda, k)) / factorial
+}
+
+// ============================================
+// 5. HALF-TIME / FULL-TIME
+// ============================================
+function generateHTFT(homeProb, drawProb, awayProb) {
+    const probabilities = []
+    
+    // Home win at HT, Home win at FT
+    probabilities.push({ ht: 'Home', ft: 'Home', prob: homeProb * homeProb * 0.7 + 0.1 })
+    // Draw at HT, Draw at FT
+    probabilities.push({ ht: 'Draw', ft: 'Draw', prob: drawProb * drawProb * 0.7 + 0.1 })
+    // Away win at HT, Away win at FT
+    probabilities.push({ ht: 'Away', ft: 'Away', prob: awayProb * awayProb * 0.7 + 0.1 })
+    // Home win at HT, Draw at FT
+    probabilities.push({ ht: 'Home', ft: 'Draw', prob: homeProb * drawProb * 0.5 })
+    // Away win at HT, Draw at FT
+    probabilities.push({ ht: 'Away', ft: 'Draw', prob: awayProb * drawProb * 0.5 })
+    
+    // Find most likely
+    probabilities.sort((a, b) => b.prob - a.prob)
+    const top = probabilities[0]
+    
+    return {
+        ht: top.ht,
+        ft: top.ft,
+        display: `${top.ht}/${top.ft}`,
+        confidence: Math.round(Math.min(top.prob * 100, 85))
+    }
+}
+
+// ============================================
+// 6. OVERALL CONFIDENCE
+// ============================================
+function calculateOverallConfidence(homeProb, drawProb, awayProb, expectedGoals) {
+    const maxProb = Math.max(homeProb, drawProb, awayProb)
+    const spread = Math.max(homeProb, awayProb) - drawProb
+    
+    let score = 0
+    // Result clarity
+    if (maxProb > 0.50) score += 40
+    else if (maxProb > 0.40) score += 25
+    else score += 10
+    
+    // Spread
+    if (spread > 0.15) score += 30
+    else if (spread > 0.08) score += 15
+    else score += 5
+    
+    // Goal expectation
+    if (Math.abs(expectedGoals - 2.5) > 1.0) score += 20
+    else if (Math.abs(expectedGoals - 2.5) > 0.5) score += 10
+    else score += 5
+    
+    return Math.min(100, Math.round(score))
+}
+
+// ============================================
+// 7. ADVICE GENERATION
+// ============================================
+function generateAdvice(result, resultConfidence, expectedGoals, h2h) {
+    let advice = ''
+    
+    if (resultConfidence === 'High') {
+        advice = `Strong data supports a ${result}. `
+    } else if (resultConfidence === 'Medium') {
+        advice = `Data slightly favors a ${result}. `
+    } else {
+        advice = `This is a close match. `
+    }
+    
+    if (expectedGoals > 3) {
+        advice += `Expect goals (${expectedGoals} total predicted). `
+    } else if (expectedGoals < 2) {
+        advice += `Likely to be a low-scoring game (${expectedGoals} total predicted). `
+    }
+    
+    if (h2h.total > 0) {
+        advice += `Head-to-head: ${h2h.homeWins}-${h2h.draws}-${h2h.awayWins}. `
+    }
+    
+    return advice
+}
+
+// ============================================
+// 8. GET PREDICTION SUMMARY (for display)
+// ============================================
+export function getPredictionSummary(prediction) {
+    return {
+        result: prediction.matchResult,
+        resultConfidence: prediction.resultConfidence,
+        overUnder: prediction.overUnder,
+        btts: prediction.btts,
+        expectedGoals: prediction.expectedGoals.total,
+        topScores: prediction.correctScores.slice(0, 3),
+        htft: prediction.htft,
+        advice: prediction.advice,
+        confidence: prediction.confidence,
+        probabilities: prediction.probabilities
+    }
+}
+
+// ============================================
+// 9. PREDICTION ACCURACY TRACKING
+// ============================================
+export async function trackPredictionAccuracy(userId, predictionId, matchId, predictedResult, actualResult) {
+    try {
+        const isCorrect = predictedResult === actualResult
+        const pointsEarned = isCorrect ? 50 : 0
+
+        // Save to prediction_accuracy table
+        const { error } = await supabase
+            .from('prediction_accuracy')
+            .insert({
+                user_id: userId,
+                prediction_id: predictionId,
+                match_id: matchId,
+                predicted_result: predictedResult,
+                actual_result: actualResult,
+                is_correct: isCorrect,
+                points_earned: pointsEarned
+            })
+
+        if (error) throw error
+
+        // Update user profile stats
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('predictions_correct, predictions_wrong, prediction_streak, points')
+            .eq('id', userId)
+            .single()
+
+        const currentCorrect = profile?.predictions_correct || 0
+        const currentWrong = profile?.predictions_wrong || 0
+        const currentStreak = profile?.prediction_streak || 0
+        const currentPoints = profile?.points || 0
+
+        let newCorrect = currentCorrect
+        let newWrong = currentWrong
+        let newStreak = currentStreak
+
+        if (isCorrect) {
+            newCorrect = currentCorrect + 1
+            newStreak = currentStreak + 1
+        } else {
+            newWrong = currentWrong + 1
+            newStreak = 0
+        }
+
+        await supabase
+            .from('profiles')
+            .update({
+                predictions_correct: newCorrect,
+                predictions_wrong: newWrong,
+                prediction_streak: newStreak,
+                points: currentPoints + pointsEarned
+            })
+            .eq('id', userId)
+
+        return {
+            success: true,
+            isCorrect,
+            pointsEarned,
+            newStreak
+        }
+
+    } catch (error) {
+        console.error('Error tracking prediction accuracy:', error)
+        return { success: false, error: error.message }
     }
 }

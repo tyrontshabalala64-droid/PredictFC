@@ -1,637 +1,307 @@
- import React, { useState, useEffect } from 'react'
+ import React, { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
-import { useTranslation } from '../contexts/TranslationContext'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { 
-  Trophy, 
-  Calendar, 
-  Sparkles,
-  Loader,
-  ChevronRight,
+  Flame, 
+  ChevronRight, 
   Clock,
-  TrendingUp,
+  Calendar,
+  Trophy,
   Users,
-  Target,
-  Globe,
-  Flag,
-  Megaphone,
-  X,
-  AlertCircle,
-  Bell,
-  Info,
-  AlertTriangle,
-  CheckCircle
+  MessageCircle,
+  Heart,
+  TrendingUp
 } from 'lucide-react'
 import { getTodaysMatches, formatMatch, COMPETITIONS } from '../services/footballApi'
+import PostCard from '../components/PostCard'
+import { SkeletonCard } from '../components/Skeleton'
 
-const LEAGUE_CONFIG = {
-  [COMPETITIONS.PREMIER_LEAGUE]: {
-    name: 'Premier League',
-    country: 'England',
-    icon: Globe,
-    iconColor: 'text-purple-600',
-    bgColor: 'bg-purple-50 dark:bg-purple-900/20',
-    borderColor: 'border-purple-200 dark:border-purple-800',
-    selectedBg: 'bg-purple-600 dark:bg-purple-500',
-    selectedText: 'text-white'
-  },
-  [COMPETITIONS.LA_LIGA]: {
-    name: 'LaLiga',
-    country: 'Spain',
-    icon: Globe,
-    iconColor: 'text-red-600',
-    bgColor: 'bg-red-50 dark:bg-red-900/20',
-    borderColor: 'border-red-200 dark:border-red-800',
-    selectedBg: 'bg-red-600 dark:bg-red-500',
-    selectedText: 'text-white'
-  },
-  [COMPETITIONS.SERIE_A]: {
-    name: 'Serie A',
-    country: 'Italy',
-    icon: Globe,
-    iconColor: 'text-blue-600',
-    bgColor: 'bg-blue-50 dark:bg-blue-900/20',
-    borderColor: 'border-blue-200 dark:border-blue-800',
-    selectedBg: 'bg-blue-600 dark:bg-blue-500',
-    selectedText: 'text-white'
-  },
-  [COMPETITIONS.BUNDESLIGA]: {
-    name: 'Bundesliga',
-    country: 'Germany',
-    icon: Globe,
-    iconColor: 'text-yellow-600',
-    bgColor: 'bg-yellow-50 dark:bg-yellow-900/20',
-    borderColor: 'border-yellow-200 dark:border-yellow-800',
-    selectedBg: 'bg-yellow-600 dark:bg-yellow-500',
-    selectedText: 'text-white'
-  },
-  [COMPETITIONS.LIGUE_1]: {
-    name: 'Ligue 1',
-    country: 'France',
-    icon: Globe,
-    iconColor: 'text-blue-500',
-    bgColor: 'bg-blue-50 dark:bg-blue-900/20',
-    borderColor: 'border-blue-200 dark:border-blue-800',
-    selectedBg: 'bg-blue-500 dark:bg-blue-400',
-    selectedText: 'text-white'
-  },
-  [COMPETITIONS.CHAMPIONS_LEAGUE]: {
-    name: 'Champions League',
-    country: 'Europe',
-    icon: Trophy,
-    iconColor: 'text-yellow-600',
-    bgColor: 'bg-yellow-50 dark:bg-yellow-900/20',
-    borderColor: 'border-yellow-200 dark:border-yellow-800',
-    selectedBg: 'bg-yellow-600 dark:bg-yellow-500',
-    selectedText: 'text-white'
-  },
-  [COMPETITIONS.WORLD_CUP]: {
-    name: 'FIFA World Cup',
-    country: 'International',
-    icon: Trophy,
-    iconColor: 'text-blue-600',
-    bgColor: 'bg-blue-50 dark:bg-blue-900/20',
-    borderColor: 'border-blue-200 dark:border-blue-800',
-    selectedBg: 'bg-blue-600 dark:bg-blue-500',
-    selectedText: 'text-white'
-  },
-  [COMPETITIONS.EREDIVISIE]: {
-    name: 'Eredivisie',
-    country: 'Netherlands',
-    icon: Globe,
-    iconColor: 'text-orange-600',
-    bgColor: 'bg-orange-50 dark:bg-orange-900/20',
-    borderColor: 'border-orange-200 dark:border-orange-800',
-    selectedBg: 'bg-orange-600 dark:bg-orange-500',
-    selectedText: 'text-white'
-  },
-  [COMPETITIONS.BRAZIL_SERIE_A]: {
-    name: 'Brasileirão',
-    country: 'Brazil',
-    icon: Globe,
-    iconColor: 'text-green-600',
-    bgColor: 'bg-green-50 dark:bg-green-900/20',
-    borderColor: 'border-green-200 dark:border-green-800',
-    selectedBg: 'bg-green-600 dark:bg-green-500',
-    selectedText: 'text-white'
-  },
-  [COMPETITIONS.CHAMPIONSHIP]: {
-    name: 'Championship',
-    country: 'England',
-    icon: Globe,
-    iconColor: 'text-blue-600',
-    bgColor: 'bg-blue-50 dark:bg-blue-900/20',
-    borderColor: 'border-blue-200 dark:border-blue-800',
-    selectedBg: 'bg-blue-600 dark:bg-blue-500',
-    selectedText: 'text-white'
-  },
-  [COMPETITIONS.PRIMEIRA_LIGA]: {
-    name: 'Primeira Liga',
-    country: 'Portugal',
-    icon: Globe,
-    iconColor: 'text-green-600',
-    bgColor: 'bg-green-50 dark:bg-green-900/20',
-    borderColor: 'border-green-200 dark:border-green-800',
-    selectedBg: 'bg-green-600 dark:bg-green-500',
-    selectedText: 'text-white'
-  },
-  [COMPETITIONS.EUROPEAN_CHAMPIONSHIP]: {
-    name: 'European Championship',
-    country: 'Europe',
-    icon: Trophy,
-    iconColor: 'text-yellow-600',
-    bgColor: 'bg-yellow-50 dark:bg-yellow-900/20',
-    borderColor: 'border-yellow-200 dark:border-yellow-800',
-    selectedBg: 'bg-yellow-600 dark:bg-yellow-500',
-    selectedText: 'text-white'
+// ============================================
+// TRENDING MATCHES SECTION
+// ============================================
+function TrendingMatches() {
+  const [matches, setMatches] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [selectedLeague, setSelectedLeague] = useState(COMPETITIONS.PREMIER_LEAGUE)
+  const scrollRef = useRef(null)
+
+  const leagues = [
+    { id: COMPETITIONS.PREMIER_LEAGUE, name: 'EPL', icon: '🏴' },
+    { id: COMPETITIONS.LA_LIGA, name: 'LaLiga', icon: '🇪🇸' },
+    { id: COMPETITIONS.BUNDESLIGA, name: 'Bundes', icon: '🇩🇪' },
+    { id: COMPETITIONS.SERIE_A, name: 'Serie A', icon: '🇮🇹' },
+    { id: COMPETITIONS.LIGUE_1, name: 'Ligue 1', icon: '🇫🇷' },
+    { id: COMPETITIONS.CHAMPIONS_LEAGUE, name: 'UCL', icon: '🌟' },
+  ]
+
+  useEffect(() => {
+    loadMatches()
+  }, [selectedLeague])
+
+  const loadMatches = async () => {
+    setLoading(true)
+    try {
+      const { matches: matchesData } = await getTodaysMatches(selectedLeague)
+      const formatted = matchesData.slice(0, 10).map(m => formatMatch(m))
+      setMatches(formatted)
+    } catch (error) {
+      console.error('Error loading matches:', error)
+      setMatches([])
+    } finally {
+      setLoading(false)
+    }
   }
+
+  const scroll = (direction) => {
+    if (scrollRef.current) {
+      const scrollAmount = 280
+      scrollRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      })
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="mb-6">
+        <div className="flex justify-between items-center mb-3">
+          <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+            <Flame size={20} className="text-orange-500" /> Trending Matches
+          </h2>
+        </div>
+        <div className="flex gap-3 overflow-x-auto pb-2">
+          {[1,2,3,4].map(i => (
+            <div key={i} className="min-w-[200px] bg-white rounded-xl shadow-sm p-4 animate-pulse">
+              <div className="h-4 bg-gray-200 rounded w-16 mb-3"></div>
+              <div className="h-6 bg-gray-200 rounded w-20 mb-2"></div>
+              <div className="h-6 bg-gray-200 rounded w-20 mb-3"></div>
+              <div className="h-3 bg-gray-200 rounded w-12"></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (matches.length === 0) {
+    return (
+      <div className="mb-6">
+        <div className="flex justify-between items-center mb-3">
+          <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+            <Flame size={20} className="text-orange-500" /> Trending Matches
+          </h2>
+        </div>
+        <div className="bg-gray-50 rounded-xl p-6 text-center">
+          <p className="text-gray-400 text-sm">No matches scheduled today</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mb-6">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-3">
+        <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+          <Flame size={20} className="text-orange-500" /> Trending Matches
+        </h2>
+        <Link to="/matches" className="text-sm text-gray-400 hover:text-gray-600 flex items-center gap-1">
+          See All <ChevronRight size={16} />
+        </Link>
+      </div>
+
+      {/* League Tabs - Horizontal Scroll */}
+      <div className="flex gap-2 mb-3 overflow-x-auto pb-1 scrollbar-hide">
+        {leagues.map((league) => (
+          <button
+            key={league.id}
+            onClick={() => setSelectedLeague(league.id)}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition ${
+              selectedLeague === league.id
+                ? 'bg-gray-800 text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {league.icon} {league.name}
+          </button>
+        ))}
+      </div>
+
+      {/* Match Cards - Horizontal Scroll */}
+      <div className="relative">
+        {/* Left Scroll Button - Desktop only */}
+        <button
+          onClick={() => scroll('left')}
+          className="hidden md:flex absolute -left-3 top-1/2 -translate-y-1/2 z-10 w-8 h-8 bg-white rounded-full shadow-md items-center justify-center hover:bg-gray-50 border border-gray-200"
+        >
+          ‹
+        </button>
+
+        <div
+          ref={scrollRef}
+          className="flex gap-3 overflow-x-auto pb-2 scroll-smooth scrollbar-hide"
+          style={{ scrollSnapType: 'x mandatory' }}
+        >
+          {matches.map((match) => (
+            <MatchCard key={match.id} match={match} />
+          ))}
+        </div>
+
+        {/* Right Scroll Button - Desktop only */}
+        <button
+          onClick={() => scroll('right')}
+          className="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-10 w-8 h-8 bg-white rounded-full shadow-md items-center justify-center hover:bg-gray-50 border border-gray-200"
+        >
+          ›
+        </button>
+      </div>
+    </div>
+  )
 }
 
-export default function Home() {
-    const { profile } = useAuth()
-    const { t } = useTranslation()
-    const navigate = useNavigate()
-    const [matches, setMatches] = useState({})
-    const [loading, setLoading] = useState(true)
-    const [selectedDate, setSelectedDate] = useState(new Date())
-    const [selectedLeague, setSelectedLeague] = useState(null)
-    const [leagueMatchCounts, setLeagueMatchCounts] = useState({})
-    const [announcements, setAnnouncements] = useState([])
-    const [dismissedAnnouncements, setDismissedAnnouncements] = useState([])
-    const [loadingAnnouncements, setLoadingAnnouncements] = useState(true)
-    const [popupAnnouncement, setPopupAnnouncement] = useState(null)
+// ============================================
+// SINGLE MATCH CARD
+// ============================================
+function MatchCard({ match }) {
+  const homeName = match.homeTeam?.name || 'Unknown'
+  const awayName = match.awayTeam?.name || 'Unknown'
+  const homeCrest = match.homeTeam?.crest
+  const awayCrest = match.awayTeam?.crest
+  const matchDate = match.kickoff ? new Date(match.kickoff) : new Date()
+  const timeStr = matchDate.toLocaleTimeString('en-US', { 
+    hour: '2-digit', 
+    minute: '2-digit' 
+  })
 
-    const getWeekDates = () => {
-        const dates = []
-        const today = new Date()
-        for (let i = 0; i < 7; i++) {
-            const date = new Date(today)
-            date.setDate(today.getDate() + i)
-            dates.push(date)
-        }
-        return dates
-    }
+  const isLive = match.status === 'live'
 
-    const weekDates = getWeekDates()
-
-    const formatDateDisplay = (date) => {
-        const today = new Date()
-        const tomorrow = new Date(today)
-        tomorrow.setDate(tomorrow.getDate() + 1)
-        
-        if (date.toDateString() === today.toDateString()) return 'Today'
-        if (date.toDateString() === tomorrow.toDateString()) return 'Tomorrow'
-        return date.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' })
-    }
-
-    const isToday = (date) => {
-        const today = new Date()
-        return date.toDateString() === today.toDateString()
-    }
-
-    useEffect(() => {
-        loadAnnouncements()
-        const dismissed = JSON.parse(localStorage.getItem('dismissed_announcements') || '[]')
-        setDismissedAnnouncements(dismissed)
-    }, [])
-
-    const loadAnnouncements = async () => {
-        setLoadingAnnouncements(true)
-        try {
-            const now = new Date().toISOString()
-            
-            const { data, error } = await supabase
-                .from('announcements')
-                .select('*')
-                .eq('active', true)
-                .or(`start_date.is.null,start_date.lte.${now}`)
-                .or(`end_date.is.null,end_date.gte.${now}`)
-                .order('priority', { ascending: false })
-                .order('created_at', { ascending: false })
-                .limit(10)
-
-            if (error) throw error
-
-            const announcementsData = data || []
-            setAnnouncements(announcementsData)
-
-            const popup = announcementsData.find(a => 
-                a.type === 'popup' && 
-                !dismissedAnnouncements.includes(a.id)
-            )
-            if (popup) {
-                setPopupAnnouncement(popup)
-            }
-        } catch (error) {
-            console.error('Error loading announcements:', error)
-            setAnnouncements([])
-        } finally {
-            setLoadingAnnouncements(false)
-        }
-    }
-
-    const dismissAnnouncement = (id) => {
-        const updated = [...dismissedAnnouncements, id]
-        setDismissedAnnouncements(updated)
-        localStorage.setItem('dismissed_announcements', JSON.stringify(updated))
-        
-        if (popupAnnouncement?.id === id) {
-            setPopupAnnouncement(null)
-        }
-    }
-
-    useEffect(() => {
-        loadAllLeaguesMatches()
-    }, [selectedDate])
-
-    const loadAllLeaguesMatches = async () => {
-        setLoading(true)
-        try {
-            const leagueIds = Object.values(COMPETITIONS)
-            const results = {}
-            const counts = {}
-
-            for (const leagueId of leagueIds) {
-                try {
-                    const { matches } = await getTodaysMatches(leagueId)
-                    const formattedMatches = matches.map(m => formatMatch(m))
-                    
-                    const dateStr = selectedDate.toISOString().split('T')[0]
-                    const filtered = formattedMatches.filter(m => {
-                        const matchDate = m.kickoff ? new Date(m.kickoff).toISOString().split('T')[0] : ''
-                        return matchDate === dateStr
-                    })
-                    
-                    results[leagueId] = filtered
-                    counts[leagueId] = filtered.length
-                } catch (error) {
-                    console.error(`Error loading league ${leagueId}:`, error)
-                    results[leagueId] = []
-                    counts[leagueId] = 0
-                }
-            }
-
-            setMatches(results)
-            setLeagueMatchCounts(counts)
-            
-            const firstLeagueWithMatches = Object.keys(counts).find(id => counts[id] > 0)
-            if (firstLeagueWithMatches) {
-                setSelectedLeague(parseInt(firstLeagueWithMatches))
-            } else if (Object.keys(counts).length > 0) {
-                setSelectedLeague(parseInt(Object.keys(counts)[0]))
-            }
-        } catch (error) {
-            console.error('Error loading matches:', error)
-        } finally {
-            setLoading(false)
-        }
-    }
-
-    const getLeagueConfig = (leagueId) => {
-        return LEAGUE_CONFIG[leagueId] || {
-            name: 'Unknown League',
-            country: 'Unknown',
-            icon: Globe,
-            iconColor: 'text-gray-600',
-            bgColor: 'bg-gray-50 dark:bg-gray-900/20',
-            borderColor: 'border-gray-200 dark:border-gray-700',
-            selectedBg: 'bg-gray-600 dark:bg-gray-500',
-            selectedText: 'text-white'
-        }
-    }
-
-    const renderMatchCard = (match) => {
-        const homeName = match.homeTeam?.name || 'Unknown'
-        const awayName = match.awayTeam?.name || 'Unknown'
-        const homeCrest = match.homeTeam?.crest
-        const awayCrest = match.awayTeam?.crest
-        
-        const matchDate = match.kickoff ? new Date(match.kickoff) : new Date()
-        const timeStr = matchDate.toLocaleTimeString('en-US', { 
-            hour: '2-digit', 
-            minute: '2-digit' 
-        })
-
-        return (
-            <div 
-                key={match.id} 
-                className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-100 dark:border-gray-700 hover:shadow-md transition cursor-pointer"
-                onClick={() => navigate('/matches')}
-            >
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3 flex-1">
-                        <div className="flex items-center gap-2">
-                            {homeCrest ? (
-                                <img src={homeCrest} alt={homeName} className="w-6 h-6 object-contain" />
-                            ) : (
-                                <div className="w-6 h-6 bg-gray-200 dark:bg-gray-600 rounded-full flex items-center justify-center text-xs font-bold text-gray-600 dark:text-gray-300">
-                                    {homeName.charAt(0)}
-                                </div>
-                            )}
-                            <span className="font-medium text-gray-800 dark:text-gray-200 text-sm">{homeName}</span>
-                        </div>
-                        <span className="text-gray-400 dark:text-gray-500 text-xs">vs</span>
-                        <div className="flex items-center gap-2">
-                            <span className="font-medium text-gray-800 dark:text-gray-200 text-sm">{awayName}</span>
-                            {awayCrest ? (
-                                <img src={awayCrest} alt={awayName} className="w-6 h-6 object-contain" />
-                            ) : (
-                                <div className="w-6 h-6 bg-gray-200 dark:bg-gray-600 rounded-full flex items-center justify-center text-xs font-bold text-gray-600 dark:text-gray-300">
-                                    {awayName.charAt(0)}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
-                        <span className="flex items-center gap-1">
-                            <Clock size={12} /> {timeStr}
-                        </span>
-                    </div>
-                </div>
-            </div>
-        )
-    }
-
-    const currentLeagueMatches = selectedLeague ? matches[selectedLeague] || [] : []
-    const leagueConfig = selectedLeague ? getLeagueConfig(selectedLeague) : null
-    const LeagueIcon = leagueConfig?.icon || Globe
-
-    const visibleBanners = announcements.filter(a => 
-        a.type === 'banner' && 
-        !dismissedAnnouncements.includes(a.id)
-    )
-
-    const visibleNotifications = announcements.filter(a => 
-        a.type === 'notification' && 
-        !dismissedAnnouncements.includes(a.id)
-    )
-
-    const getAnnouncementIcon = (type, priority) => {
-        if (type === 'popup') {
-            return priority === 'high' ? AlertCircle : Info
-        }
-        if (type === 'notification') {
-            return Bell
-        }
-        return Megaphone
-    }
-
-    const getPriorityColors = (priority) => {
-        switch(priority) {
-            case 'high':
-                return {
-                    bg: 'bg-red-50 dark:bg-red-900/20',
-                    border: 'border-red-200 dark:border-red-800',
-                    text: 'text-red-700 dark:text-red-300',
-                    icon: AlertTriangle,
-                    iconColor: 'text-red-600 dark:text-red-400'
-                }
-            case 'normal':
-                return {
-                    bg: 'bg-yellow-50 dark:bg-yellow-900/20',
-                    border: 'border-yellow-200 dark:border-yellow-800',
-                    text: 'text-yellow-700 dark:text-yellow-300',
-                    icon: Info,
-                    iconColor: 'text-yellow-600 dark:text-yellow-400'
-                }
-            default:
-                return {
-                    bg: 'bg-blue-50 dark:bg-blue-900/20',
-                    border: 'border-blue-200 dark:border-blue-800',
-                    text: 'text-blue-700 dark:text-blue-300',
-                    icon: Info,
-                    iconColor: 'text-blue-600 dark:text-blue-400'
-                }
-        }
-    }
-
-    return (
-        <div>
-            {popupAnnouncement && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] p-4 animate-fade-in">
-                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
-                        <div className="flex items-start gap-4">
-                            <div className={`p-3 rounded-full ${getPriorityColors(popupAnnouncement.priority).bg} ${getPriorityColors(popupAnnouncement.priority).border} border`}>
-                                {React.createElement(getAnnouncementIcon('popup', popupAnnouncement.priority), {
-                                    size: 24,
-                                    className: getPriorityColors(popupAnnouncement.priority).iconColor
-                                })}
-                            </div>
-                            <div className="flex-1">
-                                <h3 className="text-xl font-bold text-gray-800 dark:text-white">
-                                    {popupAnnouncement.title}
-                                </h3>
-                                <p className="text-gray-600 dark:text-gray-300 mt-2">
-                                    {popupAnnouncement.content}
-                                </p>
-                                {popupAnnouncement.end_date && (
-                                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">
-                                        Valid until {new Date(popupAnnouncement.end_date).toLocaleDateString()}
-                                    </p>
-                                )}
-                                <div className="flex gap-3 mt-6">
-                                    <button
-                                        onClick={() => dismissAnnouncement(popupAnnouncement.id)}
-                                        className="flex-1 bg-gray-800 dark:bg-white text-white dark:text-gray-800 py-2.5 rounded-lg font-medium hover:bg-gray-900 dark:hover:bg-gray-100 transition"
-                                    >
-                                        Got it
-                                    </button>
-                                    <button
-                                        onClick={() => setPopupAnnouncement(null)}
-                                        className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 py-2.5 rounded-lg font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition"
-                                    >
-                                        Close
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {!loadingAnnouncements && visibleBanners.length > 0 && (
-                <div className="mb-4 space-y-2">
-                    {visibleBanners.map((announcement) => {
-                        const colors = getPriorityColors(announcement.priority)
-                        const Icon = getAnnouncementIcon('banner', announcement.priority)
-                        
-                        return (
-                            <div key={announcement.id} className={`rounded-xl border p-4 ${colors.bg} ${colors.border}`}>
-                                <div className="flex items-start gap-3">
-                                    <div className={`p-1.5 rounded-full ${colors.bg} border ${colors.border} flex-shrink-0 mt-0.5`}>
-                                        <Icon size={18} className={colors.iconColor} />
-                                    </div>
-                                    <div className="flex-1">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <h4 className={`font-bold ${colors.text}`}>{announcement.title}</h4>
-                                        </div>
-                                        <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
-                                            {announcement.content}
-                                        </p>
-                                    </div>
-                                    <button onClick={() => dismissAnnouncement(announcement.id)} className="flex-shrink-0 p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition">
-                                        <X size={18} />
-                                    </button>
-                                </div>
-                            </div>
-                        )
-                    })}
-                </div>
-            )}
-
-            <div className="bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 md:p-6 mb-6 transition-colors duration-200">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-xl md:text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                            <Sparkles className="text-gray-600 dark:text-gray-400" size={24} />
-                            {t('welcome') || 'Welcome'}, {profile?.full_name || 'Predictor'}!
-                        </h1>
-                        <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
-                            {t('predictions') || 'Predict matches'} and {t('points') || 'earn points'}
-                        </p>
-                    </div>
-                    <Link 
-                        to="/leaderboard"
-                        className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white"
-                    >
-                        <Trophy size={16} /> Premium Predictions
-                        <ChevronRight size={16} />
-                    </Link>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3 mb-6">
-                <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 p-3 text-center">
-                    <div className="flex items-center justify-center gap-1 text-gray-400 dark:text-gray-500">
-                        <Trophy size={14} />
-                        <p className="text-xs">Points</p>
-                    </div>
-                    <p className="text-lg font-bold text-gray-800 dark:text-white">{profile?.points || 0}</p>
-                </div>
-                <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 p-3 text-center">
-                    <div className="flex items-center justify-center gap-1 text-gray-400 dark:text-gray-500">
-                        <Target size={14} />
-                        <p className="text-xs">Predictions</p>
-                    </div>
-                    <p className="text-lg font-bold text-gray-800 dark:text-white">{profile?.predictions_count || 0}</p>
-                </div>
-                <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 p-3 text-center">
-                    <div className="flex items-center justify-center gap-1 text-gray-400 dark:text-gray-500">
-                        <TrendingUp size={14} />
-                        <p className="text-xs">Accuracy</p>
-                    </div>
-                    <p className="text-lg font-bold text-gray-800 dark:text-white">{profile?.accuracy || 0}%</p>
-                </div>
-            </div>
-
-            <div className="mb-4 overflow-x-auto">
-                <div className="flex gap-2 pb-2 min-w-max">
-                    {Object.entries(COMPETITIONS).map(([key, id]) => {
-                        const config = getLeagueConfig(id)
-                        const count = leagueMatchCounts[id] || 0
-                        const isSelected = selectedLeague === id
-                        const Icon = config.icon
-                        
-                        return (
-                            <button
-                                key={id}
-                                onClick={() => setSelectedLeague(id)}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition whitespace-nowrap ${
-                                    isSelected 
-                                        ? `${config.selectedBg} text-white border-transparent` 
-                                        : `bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500`
-                                }`}
-                            >
-                                <Icon size={16} className={isSelected ? 'text-white' : config.iconColor} />
-                                <span className="text-sm font-medium">{config.country}</span>
-                                <span className={`text-xs px-2 py-0.5 rounded-full ${
-                                    isSelected 
-                                        ? 'bg-white/20 text-white' 
-                                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
-                                }`}>
-                                    {count}
-                                </span>
-                            </button>
-                        )
-                    })}
-                </div>
-            </div>
-
-            <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-                {weekDates.map((date, index) => {
-                    const isActive = date.toDateString() === selectedDate.toDateString()
-                    const dayName = date.toLocaleDateString('en-US', { weekday: 'short' })
-                    const dayNum = date.getDate()
-                    
-                    return (
-                        <button
-                            key={index}
-                            onClick={() => setSelectedDate(date)}
-                            className={`flex flex-col items-center px-4 py-2 rounded-lg border transition min-w-[60px] ${
-                                isActive 
-                                    ? 'bg-gray-800 dark:bg-white text-white dark:text-gray-800 border-gray-800 dark:border-white' 
-                                    : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-400'
-                            }`}
-                        >
-                            <span className="text-xs font-medium">{dayName}</span>
-                            <span className="text-lg font-bold">{dayNum}</span>
-                            {isToday(date) && (
-                                <span className="text-[8px] uppercase bg-green-500 text-white px-1 rounded mt-0.5">Today</span>
-                            )}
-                        </button>
-                    )
-                })}
-            </div>
-
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4">
-                {loading ? (
-                    <div className="text-center py-8">
-                        <Loader className="w-8 h-8 text-gray-300 dark:text-gray-600 animate-spin mx-auto" />
-                        <p className="text-gray-400 dark:text-gray-500 mt-2">Loading matches...</p>
-                    </div>
-                ) : (
-                    <>
-                        {leagueConfig && (
-                            <div className="flex items-center justify-between mb-4">
-                                <div className="flex items-center gap-2">
-                                    <div className={`p-2 rounded-lg ${leagueConfig.bgColor}`}>
-                                        <LeagueIcon size={20} className={leagueConfig.iconColor} />
-                                    </div>
-                                    <div>
-                                        <h2 className="font-bold text-gray-800 dark:text-white">{leagueConfig.name}</h2>
-                                        <p className="text-xs text-gray-400 dark:text-gray-500">{leagueConfig.country}</p>
-                                    </div>
-                                </div>
-                                <span className="text-sm text-gray-400 dark:text-gray-500">
-                                    {currentLeagueMatches.length} matches
-                                </span>
-                            </div>
-                        )}
-
-                        {currentLeagueMatches.length === 0 ? (
-                            <div className="text-center py-8 text-gray-400 dark:text-gray-500">
-                                <Calendar className="w-12 h-12 text-gray-200 dark:text-gray-700 mx-auto mb-2" />
-                                <p>No matches scheduled for this day</p>
-                                <p className="text-sm mt-1">Check another date or league</p>
-                            </div>
-                        ) : (
-                            <div className="space-y-2">
-                                {currentLeagueMatches.map(renderMatchCard)}
-                            </div>
-                        )}
-
-                        {currentLeagueMatches.length > 0 && (
-                            <Link 
-                                to="/matches"
-                                className="block text-center mt-4 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 underline"
-                            >
-                                View all matches →
-                            </Link>
-                        )}
-                    </>
-                )}
-            </div>
+  return (
+    <Link
+      to={`/matches`}
+      className="min-w-[160px] max-w-[180px] bg-white rounded-xl shadow-sm border border-gray-100 p-3 hover:shadow-md transition flex-shrink-0"
+      style={{ scrollSnapAlign: 'start' }}
+    >
+      {isLive && (
+        <div className="flex items-center gap-1 mb-2">
+          <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+          <span className="text-[10px] font-bold text-red-500 uppercase">Live</span>
         </div>
-    )
+      )}
+
+      {/* Home Team */}
+      <div className="flex items-center gap-2 mb-1">
+        {homeCrest ? (
+          <img src={homeCrest} alt={homeName} className="w-6 h-6 object-contain" />
+        ) : (
+          <div className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center text-[8px] font-bold text-gray-600">
+            {homeName.charAt(0)}
+          </div>
+        )}
+        <span className="text-sm font-medium text-gray-800 truncate flex-1">{homeName}</span>
+      </div>
+
+      {/* Away Team */}
+      <div className="flex items-center gap-2">
+        {awayCrest ? (
+          <img src={awayCrest} alt={awayName} className="w-6 h-6 object-contain" />
+        ) : (
+          <div className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center text-[8px] font-bold text-gray-600">
+            {awayName.charAt(0)}
+          </div>
+        )}
+        <span className="text-sm font-medium text-gray-800 truncate flex-1">{awayName}</span>
+      </div>
+
+      {/* Time */}
+      <div className="mt-2 flex items-center justify-between text-[10px] text-gray-400">
+        <span className="flex items-center gap-1">
+          <Clock size={12} /> {timeStr}
+        </span>
+        <span className="bg-gray-100 px-2 py-0.5 rounded-full">{match.league || 'Unknown'}</span>
+      </div>
+    </Link>
+  )
+}
+
+// ============================================
+// MAIN HOME PAGE
+// ============================================
+export default function Home() {
+  const { profile } = useAuth()
+  const [feedPosts, setFeedPosts] = useState([])
+  const [loadingFeed, setLoadingFeed] = useState(true)
+
+  // Load latest feed posts
+  useEffect(() => {
+    loadFeed()
+  }, [])
+
+  const loadFeed = async () => {
+    setLoadingFeed(true)
+    try {
+      const { data, error } = await supabase
+        .from('posts')
+        .select(`
+          *,
+          profiles:user_id (id, username, full_name, avatar_url, is_verified),
+          reactions:post_reactions (id, user_id, type)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(7)
+
+      if (error) throw error
+      setFeedPosts(data || [])
+    } catch (error) {
+      console.error('Error loading feed:', error)
+      setFeedPosts([])
+    } finally {
+      setLoadingFeed(false)
+    }
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto px-4 py-4 pb-20">
+      {/* Trending Matches Section */}
+      <TrendingMatches />
+
+      {/* Feed Section */}
+      <div>
+        <div className="flex justify-between items-center mb-3">
+          <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+            <TrendingUp size={20} className="text-blue-500" /> Latest Feed
+          </h2>
+          <Link to="/feed" className="text-sm text-gray-400 hover:text-gray-600 flex items-center gap-1">
+            See All <ChevronRight size={16} />
+          </Link>
+        </div>
+
+        {loadingFeed ? (
+          <div className="space-y-4">
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </div>
+        ) : feedPosts.length === 0 ? (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">
+            <MessageCircle size={40} className="text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-400 text-sm">No posts yet</p>
+            <p className="text-xs text-gray-300">Be the first to share!</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {feedPosts.map((post) => (
+              <PostCard
+                key={post.id}
+                post={post}
+                onRefresh={loadFeed}
+                currentUser={null}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
