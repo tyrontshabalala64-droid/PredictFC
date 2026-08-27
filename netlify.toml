@@ -1,7 +1,9 @@
- [build]
-  command = "npm run build"
-  publish = "build"
-
-[build.environment]
-  NODE_VERSION = "18"
-  CI = "false"
+[build] 
+  command = "npm install && npm run build" 
+  publish = "build" 
+[build.environment] 
+  NODE_VERSION = "18" 
+  CI = "false" 
+  NPM_FLAGS = "--legacy-peer-deps" 
+[[plugins]] 
+  package = "@netlify/plugin-react-scripts" 

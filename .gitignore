@@ -1,7 +1,33 @@
- node_modules
-build
-.DS_Store
-.env
-.env.local
-.env.development.local
-.env.test.local
+# Dependencies 
+node_modules/ 
+.pnp/ 
+.pnp.js 
+# Build 
+build/ 
+dist/ 
+.vercel/ 
+.netlify/ 
+# Cache 
+.cache/ 
+*.log 
+npm-debug.log* 
+yarn-debug.log* 
+yarn-error.log* 
+# Environment 
+.env 
+.env.local 
+.env.development.local 
+.env.test.local 
+.env.production.local 
+# IDE 
+.vscode/ 
+.idea/ 
+*.swp 
+*.swo 
+# OS 
+.DS_Store 
+Thumbs.db 
+# Testing 
+coverage/ 
+# Misc 
+.temp/ 
