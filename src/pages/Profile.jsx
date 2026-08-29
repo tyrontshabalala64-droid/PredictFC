@@ -25,6 +25,7 @@ import {
 import VerifiedBadge from '../components/VerifiedBadge'
 import FollowButton from '../components/follow/FollowButton'
 import ProfilePicture from '../components/ProfilePicture'
+import BouncingLoader from '../components/BouncingLoader'
 
 export default function Profile() {
     const { userId } = useParams()
@@ -57,7 +58,6 @@ export default function Profile() {
     const loadProfileData = async (targetId) => {
         setLoading(true)
         try {
-            // Get profile from profiles table (includes email now)
             const { data: profileData, error: profileError } = await supabase
                 .from('profiles')
                 .select('*')
@@ -67,7 +67,6 @@ export default function Profile() {
             if (profileError) throw profileError
             setProfile(profileData)
 
-            // Get communities user is a member of
             const { data: memberData } = await supabase
                 .from('community_members')
                 .select(`
@@ -80,14 +79,12 @@ export default function Profile() {
             const communities = memberData?.map(m => m.communities).filter(c => c !== null) || []
             setMyCommunities(communities)
 
-            // Get communities user created
             const { data: createdData } = await supabase
                 .from('communities')
                 .select('*')
                 .eq('creator_id', targetId)
             setCreatedCommunities(createdData || [])
 
-            // Get user's posts
             const { data: postsData } = await supabase
                 .from('posts')
                 .select('*')
@@ -96,7 +93,6 @@ export default function Profile() {
                 .limit(10)
             setMyPredictions(postsData || [])
 
-            // Get stats
             const { data: posts } = await supabase
                 .from('posts')
                 .select('likes_count')
@@ -109,21 +105,18 @@ export default function Profile() {
                 totalComments: 0
             })
 
-            // Get followers count
             const { count: followers } = await supabase
                 .from('followers')
                 .select('*', { count: 'exact', head: true })
                 .eq('following_id', targetId)
             setFollowersCount(followers || 0)
 
-            // Get following count
             const { count: following } = await supabase
                 .from('followers')
                 .select('*', { count: 'exact', head: true })
                 .eq('follower_id', targetId)
             setFollowingCount(following || 0)
 
-            // Get warning count
             const { count: warnings } = await supabase
                 .from('warnings')
                 .select('*', { count: 'exact', head: true })
@@ -153,7 +146,7 @@ export default function Profile() {
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-[60vh]">
-                <div className="text-gray-500 dark:text-gray-400">Loading profile...</div>
+                <BouncingLoader size="xl" color="green" text="Loading profile..." />
             </div>
         )
     }
@@ -172,14 +165,11 @@ export default function Profile() {
         <div className="max-w-4xl mx-auto px-4 py-4 pb-20">
             {/* ===== PROFILE HEADER ===== */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 sm:p-6 mb-4 sm:mb-6">
-                {/* Profile Info - Mobile First */}
                 <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
-                    {/* Avatar */}
                     <div className="flex-shrink-0">
                         <ProfilePicture size="xl" editable={isOwn} userId={targetUserId} onUpdate={() => loadProfileData(targetUserId)} />
                     </div>
                     
-                    {/* Name & Details */}
                     <div className="flex-1 text-center sm:text-left w-full">
                         <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
                             <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white break-words">
@@ -205,7 +195,6 @@ export default function Profile() {
                             </span>
                         </div>
                         
-                        {/* Follow Stats */}
                         <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 mt-3">
                             <Link to={`/profile/${profile.id}/followers`} className="text-sm hover:text-green-600 dark:hover:text-green-400 transition flex items-center gap-1">
                                 <Users size={14} className="flex-shrink-0" /> 
@@ -220,7 +209,6 @@ export default function Profile() {
                         </div>
                     </div>
                     
-                    {/* Action Buttons */}
                     <div className="flex flex-row sm:flex-col gap-2 w-full sm:w-auto justify-center sm:justify-end flex-wrap">
                         {isOwn && (
                             <Link 
@@ -236,6 +224,7 @@ export default function Profile() {
                                     userId={profile.id} 
                                     username={profile.username}
                                     onFollowChange={() => loadProfileData(profile.id)}
+                                    variant="profile"
                                 />
                                 <button
                                     onClick={handleMessage}
@@ -249,7 +238,6 @@ export default function Profile() {
                     </div>
                 </div>
 
-                {/* Stats Grid - Mobile Friendly */}
                 <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 sm:gap-4 mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-gray-200 dark:border-gray-700">
                     <div className="text-center">
                         <div className="text-lg sm:text-2xl font-bold text-gray-800 dark:text-white">{profile?.points || 0}</div>
@@ -284,7 +272,7 @@ export default function Profile() {
                 </div>
             </div>
 
-            {/* ===== TABS - Horizontal Scroll on Mobile ===== */}
+            {/* ===== TABS ===== */}
             <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
                 <button
                     onClick={() => setActiveTab('overview')}
@@ -335,7 +323,6 @@ export default function Profile() {
                 {/* Overview Tab */}
                 {activeTab === 'overview' && (
                     <>
-                        {/* Created Communities */}
                         {createdCommunities.length > 0 && (
                             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
                                 <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2 text-sm">
@@ -371,7 +358,6 @@ export default function Profile() {
                             </div>
                         )}
 
-                        {/* Joined Communities */}
                         {myCommunities.length > 0 && (
                             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
                                 <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2 text-sm">
@@ -402,7 +388,6 @@ export default function Profile() {
                             </div>
                         )}
 
-                        {/* Empty State */}
                         {createdCommunities.length === 0 && myCommunities.length === 0 && (
                             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 sm:p-8 text-center">
                                 <Building2 className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
@@ -418,7 +403,6 @@ export default function Profile() {
                             </div>
                         )}
 
-                        {/* Settings Link */}
                         {isOwn && (
                             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
                                 <Link 

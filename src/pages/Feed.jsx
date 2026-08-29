@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import PostCard from '../components/PostCard'
 import PredictionCard from '../components/PredictionCard'
-import { SkeletonFeed } from '../components/Skeleton'
+import BouncingLoader from '../components/BouncingLoader'
 import { uploadImage } from '../services/uploadService'
 
 export default function Feed() {
@@ -26,6 +26,9 @@ export default function Feed() {
     const location = useLocation()
     const [feedItems, setFeedItems] = useState([])
     const [loading, setLoading] = useState(true)
+    const [loadingMore, setLoadingMore] = useState(false)
+    const [hasMore, setHasMore] = useState(true)
+    const [page, setPage] = useState(0)
     const [newPost, setNewPost] = useState('')
     const [posting, setPosting] = useState(false)
     const [selectedImage, setSelectedImage] = useState(null)
@@ -40,6 +43,8 @@ export default function Feed() {
     const [sharedSlip, setSharedSlip] = useState(null)
     const [highlightedPostId, setHighlightedPostId] = useState(null)
     const [initialLoad, setInitialLoad] = useState(true)
+    const observerRef = useRef(null)
+    const POSTS_PER_PAGE = 10
 
     // ✅ READ THE HIGHLIGHT ID FROM THE URL
     useEffect(() => {
@@ -69,10 +74,18 @@ export default function Feed() {
         }
     }, [])
 
-    const loadFeed = useCallback(async () => {
-        setLoading(true)
-        let posts = []
-        let predictions = []
+    // ✅ Load feed with pagination
+    const loadFeed = useCallback(async (reset = true) => {
+        if (reset) {
+            setFeedItems([])
+            setPage(0)
+            setHasMore(true)
+            setLoading(true)
+        }
+
+        const currentPage = reset ? 0 : page
+        const start = currentPage * POSTS_PER_PAGE
+        const end = start + POSTS_PER_PAGE - 1
 
         try {
             let postsQuery = supabase
@@ -82,16 +95,12 @@ export default function Feed() {
                     profiles:user_id (id, username, full_name, avatar_url, is_verified),
                     comments:post_comments (
                         *,
-                        profiles:user_id (id, username, full_name, avatar_url, is_verified),
-                        replies:comment_replies (
-                            *,
-                            profiles:user_id (id, username, full_name, avatar_url, is_verified)
-                        )
+                        profiles:user_id (id, username, full_name, avatar_url, is_verified)
                     ),
                     reactions:post_reactions (id, user_id, type)
                 `)
                 .order('created_at', { ascending: false })
-                .limit(30)
+                .range(start, end)
 
             if (filter === 'following' && user) {
                 const { data: following } = await supabase
@@ -103,19 +112,19 @@ export default function Feed() {
                 if (followingIds.length > 0) {
                     postsQuery = postsQuery.in('user_id', followingIds)
                 } else {
-                    setFeedItems([])
-                    setLoading(false)
+                    if (reset) {
+                        setFeedItems([])
+                        setLoading(false)
+                    }
+                    setHasMore(false)
                     return
                 }
             }
 
             const { data: postsData, error: postsError } = await postsQuery
-            if (!postsError) {
-                posts = postsData || []
-            } else {
-                console.warn('Failed to fetch posts:', postsError)
-            }
+            if (postsError) throw postsError
 
+            // Get predictions
             let predictionsQuery = supabase
                 .from('public_predictions')
                 .select(`
@@ -123,7 +132,7 @@ export default function Feed() {
                     profiles:user_id (id, username, full_name, avatar_url, is_verified)
                 `)
                 .order('created_at', { ascending: false })
-                .limit(30)
+                .range(start, end)
 
             if (filter === 'following' && user) {
                 const { data: following } = await supabase
@@ -138,30 +147,69 @@ export default function Feed() {
             }
 
             const { data: predictionsData, error: predictionsError } = await predictionsQuery
-            if (!predictionsError) {
-                predictions = predictionsData || []
-            }
+            if (predictionsError) throw predictionsError
 
             const combined = [
-                ...posts.map(item => ({ ...item, type: 'post' })),
-                ...predictions.map(item => ({ ...item, type: 'prediction' }))
+                ...(postsData || []).map(item => ({ ...item, type: 'post' })),
+                ...(predictionsData || []).map(item => ({ ...item, type: 'prediction' }))
             ]
 
             combined.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
 
-            setFeedItems(combined)
+            if (reset) {
+                setFeedItems(combined)
+                setPage(1)
+            } else {
+                setFeedItems(prev => [...prev, ...combined])
+                setPage(prev => prev + 1)
+            }
+
+            // Check if there are more items
+            setHasMore(combined.length === POSTS_PER_PAGE)
+
         } catch (error) {
             console.error('Error loading feed:', error)
             showToast('Failed to load feed', 'error')
         } finally {
-            setLoading(false)
-            setInitialLoad(false)
+            if (reset) {
+                setLoading(false)
+                setInitialLoad(false)
+            }
+            setLoadingMore(false)
         }
-    }, [filter, user, showToast])
+    }, [filter, user, page, showToast])
 
+    // ✅ Initial load
     useEffect(() => {
-        loadFeed()
-    }, [loadFeed])
+        loadFeed(true)
+    }, [filter])
+
+    // ✅ Infinite scroll observer
+    useEffect(() => {
+        if (loading || loadingMore || !hasMore) return
+
+        if (observerRef.current) {
+            observerRef.current.disconnect()
+        }
+
+        observerRef.current = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting && hasMore && !loadingMore) {
+                setLoadingMore(true)
+                loadFeed(false)
+            }
+        }, { threshold: 0.1, rootMargin: '100px' })
+
+        const target = document.getElementById('load-more-trigger')
+        if (target) {
+            observerRef.current.observe(target)
+        }
+
+        return () => {
+            if (observerRef.current) {
+                observerRef.current.disconnect()
+            }
+        }
+    }, [loading, loadingMore, hasMore, loadFeed])
 
     // ✅ SCROLL TO THE HIGHLIGHTED POST
     useEffect(() => {
@@ -292,7 +340,7 @@ export default function Feed() {
             setNewPost('')
             setSharedSlip(null)
             removeImage()
-            await loadFeed()
+            loadFeed(true)
         } catch (error) {
             console.error('Error creating post:', error)
             showToast('Failed to create post', 'error')
@@ -307,9 +355,7 @@ export default function Feed() {
                 <div id={`post-${item.id}`} key={item.id}>
                     <PostCard
                         post={item}
-                        onRefresh={() => {
-                            loadFeed()
-                        }}
+                        onRefresh={() => loadFeed(true)}
                         currentUser={user}
                     />
                 </div>
@@ -319,7 +365,7 @@ export default function Feed() {
                 <PredictionCard
                     key={`${item.id}-${item.likes_count || 0}`}
                     prediction={item}
-                    onRefresh={loadFeed}
+                    onRefresh={() => loadFeed(true)}
                     currentUser={user}
                 />
             )
@@ -329,21 +375,16 @@ export default function Feed() {
     if (initialLoad && loading) {
         return (
             <div className="max-w-3xl mx-auto px-4 py-6">
-                <div className="flex justify-between items-center mb-6">
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-                            <Rss size={24} /> Feed
-                        </h1>
-                        <p className="text-gray-400 text-sm">Loading your feed...</p>
-                    </div>
+                <div className="flex justify-center py-12">
+                    <BouncingLoader size="xl" color="green" text="Loading feed..." />
                 </div>
-                <SkeletonFeed />
             </div>
         )
     }
 
     return (
         <div className="max-w-3xl mx-auto px-4 py-6">
+            {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
@@ -375,6 +416,7 @@ export default function Feed() {
                 </div>
             </div>
 
+            {/* User Search */}
             <div className="relative mb-4">
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
@@ -445,6 +487,7 @@ export default function Feed() {
                 )}
             </div>
 
+            {/* Create Post */}
             <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 mb-6">
                 <div className="flex items-center gap-3 mb-3">
                     <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 font-bold overflow-hidden">
@@ -518,25 +561,10 @@ export default function Feed() {
                 </form>
             </div>
 
-            {loading ? (
-                <div className="space-y-4">
-                    {[...Array(3)].map((_, i) => (
-                        <div key={i} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 animate-pulse">
-                            <div className="flex items-center gap-3 mb-3">
-                                <div className="w-10 h-10 bg-gray-200 rounded-full"></div>
-                                <div className="flex-1">
-                                    <div className="h-4 bg-gray-200 rounded w-32 mb-2"></div>
-                                    <div className="h-3 bg-gray-200 rounded w-24"></div>
-                                </div>
-                            </div>
-                            <div className="h-16 bg-gray-200 rounded w-full mb-3"></div>
-                            <div className="flex gap-2">
-                                <div className="h-8 bg-gray-200 rounded w-16"></div>
-                                <div className="h-8 bg-gray-200 rounded w-16"></div>
-                                <div className="h-8 bg-gray-200 rounded w-16"></div>
-                            </div>
-                        </div>
-                    ))}
+            {/* Feed Items */}
+            {loading && feedItems.length === 0 ? (
+                <div className="flex justify-center py-12">
+                    <BouncingLoader size="lg" color="green" text="Loading feed..." />
                 </div>
             ) : feedItems.length === 0 ? (
                 <div className="text-center py-16 bg-white rounded-xl shadow-sm border border-gray-100">
@@ -559,9 +587,28 @@ export default function Feed() {
                     </div>
                 </div>
             ) : (
-                <div className="space-y-6">
-                    {feedItems.map(renderFeedItem)}
-                </div>
+                <>
+                    <div className="space-y-6">
+                        {feedItems.map(renderFeedItem)}
+                    </div>
+                    
+                    {/* ✅ Infinite Scroll Trigger */}
+                    {hasMore && (
+                        <div id="load-more-trigger" className="flex justify-center py-4">
+                            {loadingMore ? (
+                                <BouncingLoader size="sm" color="green" text="Loading more..." />
+                            ) : (
+                                <p className="text-gray-400 text-sm">Scroll for more</p>
+                            )}
+                        </div>
+                    )}
+                    
+                    {!hasMore && feedItems.length > 0 && (
+                        <p className="text-center text-gray-400 text-sm py-4">
+                            You've seen all posts 🎉
+                        </p>
+                    )}
+                </>
             )}
         </div>
     )

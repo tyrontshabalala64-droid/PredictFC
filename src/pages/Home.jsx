@@ -1,21 +1,17 @@
  import React, { useState, useEffect, useRef } from 'react'
-import { useAuth } from '../contexts/AuthContext'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { 
   Flame, 
   ChevronRight, 
   Clock,
-  Calendar,
-  Trophy,
-  Users,
   MessageCircle,
-  Heart,
   TrendingUp
 } from 'lucide-react'
 import { getTodaysMatches, formatMatch, COMPETITIONS } from '../services/footballApi'
 import PostCard from '../components/PostCard'
-import { SkeletonCard } from '../components/Skeleton'
+import BouncingLoader from '../components/BouncingLoader'
+import AdminHighlights from '../components/AdminHighlights'
 
 // ============================================
 // TRENDING MATCHES SECTION
@@ -73,7 +69,7 @@ function TrendingMatches() {
         </div>
         <div className="flex gap-3 overflow-x-auto pb-2">
           {[1,2,3,4].map(i => (
-            <div key={i} className="min-w-[200px] bg-white rounded-xl shadow-sm p-4 animate-pulse">
+            <div key={i} className="min-w-[160px] bg-white rounded-xl shadow-sm p-4 animate-pulse">
               <div className="h-4 bg-gray-200 rounded w-16 mb-3"></div>
               <div className="h-6 bg-gray-200 rounded w-20 mb-2"></div>
               <div className="h-6 bg-gray-200 rounded w-20 mb-3"></div>
@@ -102,7 +98,6 @@ function TrendingMatches() {
 
   return (
     <div className="mb-6">
-      {/* Header */}
       <div className="flex justify-between items-center mb-3">
         <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
           <Flame size={20} className="text-orange-500" /> Trending Matches
@@ -112,7 +107,6 @@ function TrendingMatches() {
         </Link>
       </div>
 
-      {/* League Tabs - Horizontal Scroll */}
       <div className="flex gap-2 mb-3 overflow-x-auto pb-1 scrollbar-hide">
         {leagues.map((league) => (
           <button
@@ -129,9 +123,7 @@ function TrendingMatches() {
         ))}
       </div>
 
-      {/* Match Cards - Horizontal Scroll */}
       <div className="relative">
-        {/* Left Scroll Button - Desktop only */}
         <button
           onClick={() => scroll('left')}
           className="hidden md:flex absolute -left-3 top-1/2 -translate-y-1/2 z-10 w-8 h-8 bg-white rounded-full shadow-md items-center justify-center hover:bg-gray-50 border border-gray-200"
@@ -149,7 +141,6 @@ function TrendingMatches() {
           ))}
         </div>
 
-        {/* Right Scroll Button - Desktop only */}
         <button
           onClick={() => scroll('right')}
           className="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-10 w-8 h-8 bg-white rounded-full shadow-md items-center justify-center hover:bg-gray-50 border border-gray-200"
@@ -190,7 +181,6 @@ function MatchCard({ match }) {
         </div>
       )}
 
-      {/* Home Team */}
       <div className="flex items-center gap-2 mb-1">
         {homeCrest ? (
           <img src={homeCrest} alt={homeName} className="w-6 h-6 object-contain" />
@@ -202,7 +192,6 @@ function MatchCard({ match }) {
         <span className="text-sm font-medium text-gray-800 truncate flex-1">{homeName}</span>
       </div>
 
-      {/* Away Team */}
       <div className="flex items-center gap-2">
         {awayCrest ? (
           <img src={awayCrest} alt={awayName} className="w-6 h-6 object-contain" />
@@ -214,7 +203,6 @@ function MatchCard({ match }) {
         <span className="text-sm font-medium text-gray-800 truncate flex-1">{awayName}</span>
       </div>
 
-      {/* Time */}
       <div className="mt-2 flex items-center justify-between text-[10px] text-gray-400">
         <span className="flex items-center gap-1">
           <Clock size={12} /> {timeStr}
@@ -226,17 +214,111 @@ function MatchCard({ match }) {
 }
 
 // ============================================
+// ANNOUNCEMENT BANNER
+// ============================================
+function AnnouncementBanner({ announcement, onDismiss }) {
+  if (!announcement) return null
+
+  const getBgColor = () => {
+    switch(announcement.priority) {
+      case 'high': return 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800'
+      case 'normal': return 'bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800'
+      default: return 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800'
+    }
+  }
+
+  const getTextColor = () => {
+    switch(announcement.priority) {
+      case 'high': return 'text-red-700 dark:text-red-300'
+      case 'normal': return 'text-yellow-700 dark:text-yellow-300'
+      default: return 'text-blue-700 dark:text-blue-300'
+    }
+  }
+
+  return (
+    <div className={`rounded-xl border p-3 mb-4 ${getBgColor()}`}>
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <h4 className={`font-bold text-sm ${getTextColor()}`}>
+            {announcement.title}
+          </h4>
+          <p className={`text-sm ${getTextColor()} opacity-90 mt-0.5`}>
+            {announcement.content}
+          </p>
+          {announcement.end_date && (
+            <p className="text-xs opacity-60 mt-1">
+              Valid until {new Date(announcement.end_date).toLocaleDateString()}
+            </p>
+          )}
+        </div>
+        <button
+          onClick={onDismiss}
+          className="flex-shrink-0 p-1 hover:bg-white/50 dark:hover:bg-gray-800/50 rounded-lg transition"
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ============================================
 // MAIN HOME PAGE
 // ============================================
 export default function Home() {
-  const { profile } = useAuth()
   const [feedPosts, setFeedPosts] = useState([])
   const [loadingFeed, setLoadingFeed] = useState(true)
+  const [announcements, setAnnouncements] = useState([])
+  const [dismissedAnnouncements, setDismissedAnnouncements] = useState([])
+  const [loadingAnnouncements, setLoadingAnnouncements] = useState(true)
 
-  // Load latest feed posts
+  // Load dismissed announcements from localStorage
   useEffect(() => {
-    loadFeed()
+    const dismissed = JSON.parse(localStorage.getItem('dismissed_announcements') || '[]')
+    setDismissedAnnouncements(dismissed)
   }, [])
+
+  // Load announcements
+  useEffect(() => {
+    loadAnnouncements()
+  }, [])
+
+  const loadAnnouncements = async () => {
+    setLoadingAnnouncements(true)
+    try {
+      const now = new Date().toISOString()
+      
+      const { data, error } = await supabase
+        .from('announcements')
+        .select('*')
+        .eq('active', true)
+        .or(`start_date.is.null,start_date.lte.${now}`)
+        .or(`end_date.is.null,end_date.gte.${now}`)
+        .order('priority', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(10)
+
+      if (error) {
+        console.warn('Error loading announcements:', error)
+        setAnnouncements([])
+        setLoadingAnnouncements(false)
+        return
+      }
+
+      setAnnouncements(data || [])
+    } catch (error) {
+      console.error('Error loading announcements:', error)
+      setAnnouncements([])
+    } finally {
+      setLoadingAnnouncements(false)
+    }
+  }
+
+  const dismissAnnouncement = (id) => {
+    const updated = [...dismissedAnnouncements, id]
+    setDismissedAnnouncements(updated)
+    localStorage.setItem('dismissed_announcements', JSON.stringify(updated))
+  }
 
   const loadFeed = async () => {
     setLoadingFeed(true)
@@ -261,10 +343,33 @@ export default function Home() {
     }
   }
 
+  useEffect(() => {
+    loadFeed()
+  }, [])
+
+  // Filter out dismissed announcements
+  const visibleAnnouncements = announcements.filter(a => !dismissedAnnouncements.includes(a.id))
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-4 pb-20">
+      {/* Announcements Section */}
+      {!loadingAnnouncements && visibleAnnouncements.length > 0 && (
+        <div className="mb-4">
+          {visibleAnnouncements.map((announcement) => (
+            <AnnouncementBanner
+              key={announcement.id}
+              announcement={announcement}
+              onDismiss={() => dismissAnnouncement(announcement.id)}
+            />
+          ))}
+        </div>
+      )}
+
       {/* Trending Matches Section */}
       <TrendingMatches />
+
+      {/* ✅ Admin Highlights Section - NEW */}
+      <AdminHighlights />
 
       {/* Feed Section */}
       <div>
@@ -278,10 +383,8 @@ export default function Home() {
         </div>
 
         {loadingFeed ? (
-          <div className="space-y-4">
-            <SkeletonCard />
-            <SkeletonCard />
-            <SkeletonCard />
+          <div className="flex justify-center py-12">
+            <BouncingLoader size="lg" color="green" text="Loading posts..." />
           </div>
         ) : feedPosts.length === 0 ? (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">

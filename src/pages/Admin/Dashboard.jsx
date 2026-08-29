@@ -23,12 +23,14 @@ import {
   User,
   AlertTriangle,
   Eye,
-  MessageCircle
+  MessageCircle,
+  Sparkles
 } from 'lucide-react'
-
+import BouncingLoader from '../../components/BouncingLoader'
 import Subscriptions from './Subscriptions'
 import Analytics from './Analytics'
 import Announcements from './Announcements'
+import Highlights from './Highlights'
 import PlatformSettings from './Settings'
 
 export default function AdminDashboard() {
@@ -381,7 +383,6 @@ export default function AdminDashboard() {
         }
 
         try {
-            // 1. Create warning record
             const { data: warningData, error: warningError } = await supabase
                 .from('warnings')
                 .insert({
@@ -397,7 +398,6 @@ export default function AdminDashboard() {
 
             if (warningError) throw warningError
 
-            // 2. Create notification for the user
             const { error: notifError } = await supabase
                 .from('notifications')
                 .insert({
@@ -410,7 +410,6 @@ export default function AdminDashboard() {
 
             if (notifError) throw notifError
 
-            // 3. Resolve the report
             await handleResolveReport(report.id)
 
             showToast(`Warning sent to @${username}`, 'info')
@@ -447,6 +446,20 @@ export default function AdminDashboard() {
         navigate('/login')
     }
 
+    // ✅ Tab Configuration
+    const tabs = [
+        { id: 'overview', label: 'Overview', icon: BarChart3 },
+        { id: 'users', label: 'Users', icon: Users },
+        { id: 'communities', label: 'Communities', icon: Building2 },
+        { id: 'posts', label: 'Posts', icon: FileText },
+        { id: 'reports', label: 'Reports', icon: Flag },
+        { id: 'subscriptions', label: 'Subscriptions', icon: CreditCard },
+        { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+        { id: 'announcements', label: 'Announcements', icon: Megaphone },
+        { id: 'highlights', label: 'Highlights', icon: Sparkles }, // ✅ NEW
+        { id: 'settings', label: 'Settings', icon: Settings },
+    ]
+
     const renderTabContent = () => {
         switch(activeTab) {
             case 'overview':
@@ -465,6 +478,8 @@ export default function AdminDashboard() {
                 return <Analytics />
             case 'announcements':
                 return <Announcements />
+            case 'highlights':
+                return <Highlights />
             case 'settings':
                 return <PlatformSettings />
             default:
@@ -808,7 +823,7 @@ export default function AdminDashboard() {
     if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center">
-                <div className="text-gray-500">Loading dashboard...</div>
+                <BouncingLoader size="xl" color="blue" text="Loading dashboard..." />
             </div>
         )
     }
@@ -867,33 +882,22 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="flex flex-wrap gap-2 mb-6 overflow-x-auto pb-2">
-                    <button onClick={() => setActiveTab('overview')} className={`px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap flex items-center gap-2 ${activeTab === 'overview' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                        <BarChart3 size={16} /> Overview
-                    </button>
-                    <button onClick={() => setActiveTab('users')} className={`px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap flex items-center gap-2 ${activeTab === 'users' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                        <Users size={16} /> Users ({stats.totalUsers})
-                    </button>
-                    <button onClick={() => setActiveTab('communities')} className={`px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap flex items-center gap-2 ${activeTab === 'communities' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                        <Building2 size={16} /> Communities ({stats.totalCommunities})
-                    </button>
-                    <button onClick={() => setActiveTab('posts')} className={`px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap flex items-center gap-2 ${activeTab === 'posts' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                        <FileText size={16} /> Posts ({stats.totalPosts})
-                    </button>
-                    <button onClick={() => setActiveTab('reports')} className={`px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap flex items-center gap-2 ${activeTab === 'reports' ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                        <Flag size={16} /> Reports ({stats.totalReports})
-                    </button>
-                    <button onClick={() => setActiveTab('subscriptions')} className={`px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap flex items-center gap-2 ${activeTab === 'subscriptions' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                        <CreditCard size={16} /> Subscriptions
-                    </button>
-                    <button onClick={() => setActiveTab('analytics')} className={`px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap flex items-center gap-2 ${activeTab === 'analytics' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                        <BarChart3 size={16} /> Analytics
-                    </button>
-                    <button onClick={() => setActiveTab('announcements')} className={`px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap flex items-center gap-2 ${activeTab === 'announcements' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                        <Megaphone size={16} /> Announcements
-                    </button>
-                    <button onClick={() => setActiveTab('settings')} className={`px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap flex items-center gap-2 ${activeTab === 'settings' ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                        <Settings size={16} /> Settings
-                    </button>
+                    {tabs.map((tab) => {
+                        const Icon = tab.icon
+                        return (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap flex items-center gap-2 ${
+                                    activeTab === tab.id 
+                                        ? 'bg-purple-600 text-white' 
+                                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                }`}
+                            >
+                                <Icon size={16} /> {tab.label}
+                            </button>
+                        )
+                    })}
                 </div>
 
                 {renderTabContent()}

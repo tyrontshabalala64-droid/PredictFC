@@ -198,3 +198,71 @@ body {
     padding-right: 16px;
   }
 }
+/* ============================================
+   WAVEFORM ANIMATION
+   ============================================ */
+@keyframes wave {
+    0%, 100% { transform: scaleY(0.3); }
+    50% { transform: scaleY(1); }
+}
+
+.animate-wave {
+    animation: wave 0.6s ease-in-out infinite;
+    transform-origin: bottom;
+}
+/* ============================================
+   BOUNCING LOADER ANIMATION
+   ============================================ */
+@keyframes bounce-delay {
+    0%, 80%, 100% {
+        transform: scale(0);
+        opacity: 0.4;
+    }
+    40% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.animate-bounce-delay-1 {
+    animation: bounce-delay 1.4s ease-in-out infinite;
+}
+
+.animate-bounce-delay-2 {
+    animation: bounce-delay 1.4s ease-in-out infinite;
+    animation-delay: 0.2s;
+}
+
+.animate-bounce-delay-3 {
+    animation: bounce-delay 1.4s ease-in-out infinite;
+    animation-delay: 0.4s;
+}
+
+/* Optional: Different variants */
+.animate-bounce-delay-fast-1 {
+    animation: bounce-delay 0.8s ease-in-out infinite;
+}
+
+.animate-bounce-delay-fast-2 {
+    animation: bounce-delay 0.8s ease-in-out infinite;
+    animation-delay: 0.12s;
+}
+
+.animate-bounce-delay-fast-3 {
+    animation: bounce-delay 0.8s ease-in-out infinite;
+    animation-delay: 0.24s;
+}
+/* Animated gradient for border glow */
+@keyframes gradient-xy {
+    0%, 100% {
+        background-position: 0% 50%;
+    }
+    50% {
+        background-position: 100% 50%;
+    }
+}
+
+.animate-gradient-xy {
+    background-size: 200% 200%;
+    animation: gradient-xy 3s ease infinite;
+}

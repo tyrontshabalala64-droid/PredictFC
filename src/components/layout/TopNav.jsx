@@ -1,8 +1,7 @@
- import React, { useState, useEffect, useRef } from 'react'
+ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
-import { useTranslation } from '../../contexts/TranslationContext'
 import { 
   Menu, 
   X, 
@@ -21,19 +20,22 @@ import {
   MessageCircle,
   ChevronDown
 } from 'lucide-react'
+import VerifiedBadge from '../VerifiedBadge'
 
 export default function TopNav() {
   const { user, profile, isAdmin, signOut } = useAuth()
-  const { t } = useTranslation()
   const location = useLocation()
   const navigate = useNavigate()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
   const [showSearch, setShowSearch] = useState(false)
+  const [isSearching, setIsSearching] = useState(false)
   const menuRef = useRef(null)
   const searchRef = useRef(null)
+  const searchTimeoutRef = useRef(null)
 
   // Close menu on outside click
   useEffect(() => {
@@ -61,6 +63,8 @@ export default function TopNav() {
   useEffect(() => {
     setIsMenuOpen(false)
     setShowSearch(false)
+    setSearchQuery('')
+    setSearchResults([])
   }, [location.pathname])
 
   // Get unread notifications count
@@ -90,36 +94,107 @@ export default function TopNav() {
     return () => clearInterval(interval)
   }, [user])
 
-  // Handle search
+  // Get unread messages count
   useEffect(() => {
-    if (!searchQuery.trim() || searchQuery.length < 2) {
-      setSearchResults([])
-      return
-    }
-
-    const searchUsers = async () => {
+    if (!user) return
+    
+    const fetchUnreadMessages = async () => {
       try {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('id, username, full_name, avatar_url, is_verified')
-          .ilike('username', `%${searchQuery}%`)
-          .limit(5)
+        const { count, error } = await supabase
+          .from('messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('receiver_id', user.id)
+          .eq('read', false)
 
         if (error) {
-          console.warn('Search error:', error)
-          setSearchResults([])
+          console.warn('Error fetching unread messages:', error)
+          setUnreadMessagesCount(0)
           return
         }
-        setSearchResults(data || [])
+        setUnreadMessagesCount(count || 0)
       } catch (error) {
-        console.error('Search error:', error)
-        setSearchResults([])
+        console.error('Error fetching unread messages:', error)
+        setUnreadMessagesCount(0)
       }
     }
 
-    const debounce = setTimeout(searchUsers, 300)
-    return () => clearTimeout(debounce)
-  }, [searchQuery])
+    fetchUnreadMessages()
+    
+    const subscription = supabase
+      .channel('messages-unread')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `receiver_id=eq.${user.id}`
+      }, () => {
+        fetchUnreadMessages()
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'messages',
+        filter: `receiver_id=eq.${user.id}`
+      }, () => {
+        fetchUnreadMessages()
+      })
+      .subscribe()
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [user])
+
+  // ✅ Handle search
+  const handleSearch = useCallback(async (query) => {
+    if (!query || query.length < 2) {
+      setSearchResults([])
+      setShowSearch(false)
+      setIsSearching(false)
+      return
+    }
+
+    setIsSearching(true)
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, username, full_name, avatar_url, is_verified')
+        .ilike('username', `%${query}%`)
+        .limit(5)
+
+      if (error) throw error
+      setSearchResults(data || [])
+      setShowSearch(data && data.length > 0)
+    } catch (error) {
+      console.error('Search error:', error)
+      setSearchResults([])
+      setShowSearch(false)
+    } finally {
+      setIsSearching(false)
+    }
+  }, [])
+
+  // Debounce search
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current)
+    }
+
+    if (searchQuery.length >= 2) {
+      searchTimeoutRef.current = setTimeout(() => {
+        handleSearch(searchQuery)
+      }, 300)
+    } else {
+      setSearchResults([])
+      setShowSearch(false)
+    }
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current)
+      }
+    }
+  }, [searchQuery, handleSearch])
 
   const handleSignOut = async () => {
     await signOut()
@@ -127,7 +202,7 @@ export default function TopNav() {
     setIsMenuOpen(false)
   }
 
-  // ✅ Navigation items - Desktop Top Nav
+  // Navigation items - Desktop Top Nav
   const navItems = [
     { path: '/', icon: Home, label: 'Home' },
     { path: '/feed', icon: Rss, label: 'Feed' },
@@ -137,18 +212,22 @@ export default function TopNav() {
     { path: '/slip', icon: ClipboardList, label: 'Slip' },
   ]
 
-  // Admin items
   const adminItems = [
     { path: '/admin', icon: Shield, label: 'Admin Dashboard' },
   ]
 
-  // ✅ CORRECTED BOTTOM NAV - Mobile
+  // ✅ Bottom nav items - ALWAYS VISIBLE on mobile AND desktop
   const bottomNavItems = [
     { path: '/', icon: Home, label: 'Home' },
     { path: '/feed', icon: Rss, label: 'Feed' },
-    { path: '/inbox', icon: MessageCircle, label: 'Inbox' },
+    { 
+      path: '/inbox', 
+      icon: MessageCircle, 
+      label: 'Inbox',
+      badge: unreadMessagesCount
+    },
     { path: '/profile', icon: User, label: 'Profile' },
-    { path: '/settings', icon: Settings, label: 'Settings' },  // ← Settings RESTORED
+    { path: '/settings', icon: Settings, label: 'Settings' },
   ]
 
   const isActive = (path) => {
@@ -227,13 +306,21 @@ export default function TopNav() {
                     value={searchQuery}
                     onChange={(e) => {
                       setSearchQuery(e.target.value)
-                      setShowSearch(true)
                     }}
-                    onFocus={() => setShowSearch(true)}
+                    onFocus={() => {
+                      if (searchQuery.length >= 2) {
+                        setShowSearch(true)
+                      }
+                    }}
                     placeholder="Search users..."
                     className="w-48 lg:w-64 px-4 py-1.5 pl-9 pr-4 bg-gray-100 dark:bg-gray-700 border border-transparent rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-gray-500 focus:border-transparent text-gray-800 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 text-sm transition"
                   />
                   <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
+                  {isSearching && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                  )}
                 </div>
                 
                 {/* Search Results Dropdown */}
@@ -366,7 +453,6 @@ export default function TopNav() {
                 </Link>
               ))}
 
-              {/* Admin Section */}
               {isAdmin && (
                 <>
                   <div className="h-px bg-gray-200 dark:bg-gray-700 my-2" />
@@ -390,7 +476,6 @@ export default function TopNav() {
 
               <div className="h-px bg-gray-200 dark:bg-gray-700 my-2" />
 
-              {/* Settings */}
               <Link
                 to="/settings"
                 onClick={() => setIsMenuOpen(false)}
@@ -400,17 +485,20 @@ export default function TopNav() {
                 <span className="font-medium">Settings</span>
               </Link>
 
-              {/* Inbox */}
               <Link
                 to="/inbox"
                 onClick={() => setIsMenuOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                className="relative flex items-center gap-3 px-4 py-3 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
               >
                 <MessageCircle size={20} />
                 <span className="font-medium">Inbox</span>
+                {unreadMessagesCount > 0 && (
+                  <span className="ml-auto bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
+                    {unreadMessagesCount}
+                  </span>
+                )}
               </Link>
 
-              {/* Logout */}
               <button
                 onClick={handleSignOut}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition"
@@ -420,7 +508,6 @@ export default function TopNav() {
               </button>
             </div>
 
-            {/* App Version */}
             <div className="p-4 text-center text-xs text-gray-400 dark:text-gray-500 border-t border-gray-200 dark:border-gray-700">
               PredictFC v1.0.0
             </div>
@@ -428,8 +515,8 @@ export default function TopNav() {
         </div>
       )}
 
-      {/* ===== MOBILE BOTTOM NAV ===== */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 md:hidden safe-bottom">
+      {/* ===== BOTTOM NAV - ALWAYS VISIBLE (Mobile + Desktop) ===== */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 safe-bottom">
         <div className="flex items-center justify-around h-16 max-w-md mx-auto">
           {bottomNavItems.map((item) => {
             const active = isActive(item.path)
@@ -437,7 +524,7 @@ export default function TopNav() {
               <Link
                 key={item.path}
                 to={item.path}
-                className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg transition touch-target ${
+                className={`relative flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg transition touch-target ${
                   active
                     ? 'text-gray-800 dark:text-white'
                     : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
@@ -449,6 +536,11 @@ export default function TopNav() {
                   strokeWidth={active ? 2.5 : 2}
                 />
                 <span className="text-[10px] font-medium">{item.label}</span>
+                {item.badge > 0 && (
+                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                    {item.badge > 9 ? '9+' : item.badge}
+                  </span>
+                )}
               </Link>
             )
           })}

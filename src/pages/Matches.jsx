@@ -14,6 +14,7 @@ import {
   BarChart3,
   Globe
 } from 'lucide-react'
+import BouncingLoader from '../components/BouncingLoader'
 import { getTodaysMatches, formatMatch, COMPETITIONS } from '../services/footballApi'
 import { getMockOdds } from '../services/oddsService'
 
@@ -426,9 +427,8 @@ export default function Matches() {
             </div>
 
             {loading ? (
-                <div className="text-center py-12">
-                    <Loader className="w-8 h-8 text-gray-300 animate-spin mx-auto" />
-                    <div className="text-gray-400 mt-2">Loading matches...</div>
+                <div className="flex justify-center py-12">
+                    <BouncingLoader size="lg" color="green" text="Loading matches..." />
                 </div>
             ) : matches.length === 0 ? (
                 <div className="text-center py-12 bg-white rounded-xl shadow-sm border border-gray-100">

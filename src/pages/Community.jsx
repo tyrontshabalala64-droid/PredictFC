@@ -13,6 +13,7 @@ import {
   TrendingUp
 } from 'lucide-react'
 import FollowButton from '../components/follow/FollowButton'
+import BouncingLoader from '../components/BouncingLoader'
 
 export default function Community() {
     const { user, profile } = useAuth()
@@ -144,8 +145,8 @@ export default function Community() {
             </div>
 
             {loading ? (
-                <div className="text-center py-12">
-                    <div className="text-gray-500">Loading...</div>
+                <div className="flex justify-center py-12">
+                    <BouncingLoader size="lg" color="green" text="Loading communities..." />
                 </div>
             ) : (
                 <>

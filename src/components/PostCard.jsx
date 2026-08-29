@@ -8,12 +8,21 @@ import {
   Edit2,
   X,
   Save,
-  BarChart3
+  BarChart3,
+  UserPlus,
+  Copy,
+  Check,
+  Ticket,
+  Hash,
+  Target,
+  TrendingUp,
+  Calendar,
+  DollarSign,
+  Award
 } from 'lucide-react'
 import ReactionButtons from './ReactionButtons'
 import CommentSection from './CommentSection'
 import VerifiedBadge from './VerifiedBadge'
-import FollowButton from './follow/FollowButton'
 import ProfilePicture from './ProfilePicture'
 
 export default function PostCard({ post, onRefresh, currentUser }) {
@@ -32,9 +41,11 @@ export default function PostCard({ post, onRefresh, currentUser }) {
     const [editedText, setEditedText] = useState(post.text || '')
     const [isSaving, setIsSaving] = useState(false)
     const [likesCount, setLikesCount] = useState(post.likes_count || 0)
+    const [isFollowing, setIsFollowing] = useState(false)
+    const [followLoading, setFollowLoading] = useState(false)
+    const [copied, setCopied] = useState(false)
 
     useEffect(() => {
-        // Calculate reaction counts from the fetched post.reactions
         if (post.reactions) {
             const counts = { like: 0, dislike: 0, laugh: 0, wow: 0, sad: 0, angry: 0 }
             post.reactions.forEach(r => {
@@ -51,11 +62,72 @@ export default function PostCard({ post, onRefresh, currentUser }) {
                 setUserReaction(userReact.type)
             }
         }
-    }, [post.reactions, currentUser])
+
+        if (currentUser && post.user_id && post.user_id !== currentUser.id) {
+            checkFollowStatus()
+        }
+    }, [post.reactions, currentUser, post.user_id])
+
+    const checkFollowStatus = async () => {
+        if (!currentUser || !post.user_id) return
+        try {
+            const { data, error } = await supabase
+                .from('followers')
+                .select('id')
+                .eq('follower_id', currentUser.id)
+                .eq('following_id', post.user_id)
+                .maybeSingle()
+
+            if (error) throw error
+            setIsFollowing(!!data)
+        } catch (error) {
+            console.error('Error checking follow status:', error)
+        }
+    }
+
+    const handleFollowToggle = async (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        
+        if (!currentUser) {
+            alert('Please sign in to follow users')
+            return
+        }
+
+        if (post.user_id === currentUser.id) return
+
+        setFollowLoading(true)
+        try {
+            if (isFollowing) {
+                const { error } = await supabase
+                    .from('followers')
+                    .delete()
+                    .eq('follower_id', currentUser.id)
+                    .eq('following_id', post.user_id)
+
+                if (error) throw error
+                setIsFollowing(false)
+            } else {
+                const { error } = await supabase
+                    .from('followers')
+                    .insert({
+                        follower_id: currentUser.id,
+                        following_id: post.user_id
+                    })
+
+                if (error) throw error
+                setIsFollowing(true)
+            }
+        } catch (error) {
+            console.error('Error toggling follow:', error)
+        } finally {
+            setFollowLoading(false)
+        }
+    }
 
     const handleReaction = async (type) => {
         if (!currentUser) {
-            alert('Please sign in to react')
+            alert('Please go to the Feed page to react to posts.')
             return
         }
 
@@ -113,7 +185,6 @@ export default function PostCard({ post, onRefresh, currentUser }) {
                 .update({ likes_count: newLikesCount })
                 .eq('id', post.id)
 
-            // ✅ Create a like notification (only if it's a new like, not unlike)
             if (userReaction !== type) {
                 await supabase
                     .from('notifications')
@@ -181,6 +252,187 @@ export default function PostCard({ post, onRefresh, currentUser }) {
         }
     }
 
+    const parseSlipContent = (text) => {
+        if (!text) return null
+        
+        const lines = text.split('\n').filter(line => line.trim() !== '')
+        const matches = []
+        let currentMatch = null
+        let totalReturn = null
+        
+        for (const line of lines) {
+            if (line.includes('📊 Multi-Market Bet Slip')) continue
+            if (line.includes('━━━━━━━━━━━━━━━━━━━━━━━━━')) continue
+            
+            if (line.includes('💰 Total Potential Return:')) {
+                const match = line.match(/💰 Total Potential Return:\s*([\d.]+)x/)
+                if (match) {
+                    totalReturn = match[1]
+                }
+                continue
+            }
+            
+            const matchNumberMatch = line.match(/^(\d+)\.\s+(.+?)\s+vs\s+(.+)$/)
+            if (matchNumberMatch) {
+                if (currentMatch && currentMatch.markets.length > 0) {
+                    matches.push(currentMatch)
+                }
+                currentMatch = {
+                    homeTeam: matchNumberMatch[2].trim(),
+                    awayTeam: matchNumberMatch[3].trim(),
+                    markets: []
+                }
+                continue
+            }
+            
+            if (currentMatch && line.includes('•')) {
+                const marketMatch = line.match(/•\s+(.+?):\s+(.+?)\s+\(([\d.]+)\)/)
+                if (marketMatch) {
+                    currentMatch.markets.push({
+                        name: marketMatch[1].trim(),
+                        pick: marketMatch[2].trim(),
+                        odds: marketMatch[3]
+                    })
+                }
+                continue
+            }
+            
+            if (currentMatch && line.includes('Total Odds:')) {
+                const oddsMatch = line.match(/Total Odds:\s*([\d.]+)/)
+                if (oddsMatch) {
+                    currentMatch.totalOdds = oddsMatch[1]
+                }
+                continue
+            }
+        }
+        
+        if (currentMatch && currentMatch.markets.length > 0) {
+            matches.push(currentMatch)
+        }
+        
+        return { matches, totalReturn }
+    }
+
+    const copySlipToClipboard = (e) => {
+        e.stopPropagation()
+        if (!post.text) return
+        
+        navigator.clipboard.writeText(post.text)
+            .then(() => {
+                setCopied(true)
+                setTimeout(() => setCopied(false), 2000)
+            })
+            .catch(() => {
+                alert('Failed to copy slip')
+            })
+    }
+
+    const renderSlipCard = () => {
+        const parsed = parseSlipContent(post.text)
+        if (!parsed || parsed.matches.length === 0) {
+            return (
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 font-mono text-sm">
+                    <div className="whitespace-pre-wrap text-gray-800">
+                        {post.text}
+                    </div>
+                </div>
+            )
+        }
+
+        const { matches, totalReturn } = parsed
+
+        return (
+            <div className="relative">
+                {/* ✅ Top Accent Bar - Makes it stand out */}
+                <div className="absolute -top-0.5 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-green-500 to-blue-500 rounded-t-xl"></div>
+                
+                {/* ✅ Slip Label Badge */}
+                <div className="absolute -top-2 left-4 bg-blue-600 text-white text-[10px] font-bold px-3 py-0.5 rounded-full shadow-md flex items-center gap-1.5 z-10">
+                    <Ticket size={10} />
+                    SLIP
+                </div>
+
+                <div className="bg-white border border-gray-200 rounded-xl p-4 pt-5 shadow-md relative overflow-hidden">
+                    {/* ✅ Subtle Background Pattern - Watermark Ticket Icon */}
+                    <div className="absolute -bottom-6 -right-6 opacity-5">
+                        <Ticket size={120} />
+                    </div>
+
+                    {/* Copy Button */}
+                    <button
+                        onClick={copySlipToClipboard}
+                        className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 transition z-10"
+                        title="Copy slip"
+                    >
+                        {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
+                    </button>
+
+                    {/* Header */}
+                    <div className="text-center mb-3">
+                        <div className="flex items-center justify-center gap-2 text-gray-800 font-bold text-sm tracking-wider">
+                            <Ticket size={16} className="text-blue-600" />
+                            <span>BET SLIP</span>
+                        </div>
+                        <div className="h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent my-2"></div>
+                    </div>
+
+                    {/* Matches */}
+                    {matches.map((match, index) => (
+                        <div key={index} className="mb-3">
+                            {/* Match Header */}
+                            <div className="text-gray-800 font-semibold text-sm flex items-center gap-1.5">
+                                <span className="text-blue-500 font-bold text-xs bg-blue-50 px-1.5 py-0.5 rounded">
+                                    {index + 1}
+                                </span>
+                                <span>{match.homeTeam} vs {match.awayTeam}</span>
+                            </div>
+                            
+                            {/* Markets */}
+                            {match.markets.map((market, i) => (
+                                <div key={i} className="flex justify-between text-gray-600 text-sm ml-6 mt-0.5">
+                                    <span className="flex items-center gap-1.5">
+                                        <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                                        {market.name}: {market.pick}
+                                    </span>
+                                    <span className="text-green-600 font-medium">@{market.odds}</span>
+                                </div>
+                            ))}
+                            
+                            {/* Match Total Odds */}
+                            {match.totalOdds && (
+                                <div className="flex justify-between text-blue-600 text-sm mt-1 ml-6 bg-blue-50 px-2 py-0.5 rounded">
+                                    <span className="flex items-center gap-1.5">
+                                        <TrendingUp size={10} />
+                                        Combined Odds
+                                    </span>
+                                    <span className="font-bold">{match.totalOdds}</span>
+                                </div>
+                            )}
+                            
+                            {/* Separator between matches */}
+                            {index < matches.length - 1 && (
+                                <div className="h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent my-2"></div>
+                            )}
+                        </div>
+                    ))}
+
+                    {/* Footer */}
+                    <div className="h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent my-2"></div>
+                    <div className="flex justify-between items-center">
+                        <span className="text-green-600 font-bold flex items-center gap-1.5 text-sm">
+                            <DollarSign size={14} />
+                            Total Return: {totalReturn || '0.00'}x
+                        </span>
+                        <span className="text-gray-400 text-xs flex items-center gap-1">
+                            <Calendar size={10} />
+                            {new Date(post.created_at).toLocaleDateString()} • {matches.reduce((acc, m) => acc + m.markets.length, 0)} picks
+                        </span>
+                    </div>
+                </div>
+            </div>
+        )
+    }
+
     if (isEditing) {
         return (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
@@ -226,6 +478,9 @@ export default function PostCard({ post, onRefresh, currentUser }) {
         )
     }
 
+    const showFollowIcon = currentUser && post.user_id && post.user_id !== currentUser.id && !isFollowing
+    const isSlipPost = post.text && post.text.includes('📊 Multi-Market Bet Slip')
+
     return (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="p-4 pb-2">
@@ -245,43 +500,46 @@ export default function PostCard({ post, onRefresh, currentUser }) {
                             </div>
                         </div>
                     </Link>
-                    <div className="flex items-center gap-1">
-                        {post.user_id === currentUser?.id && (
-                            <>
-                                <button 
-                                    onClick={handleEdit}
-                                    className="text-gray-400 hover:text-blue-600 transition p-1.5 rounded-lg hover:bg-blue-50"
-                                    title="Edit post"
-                                >
-                                    <Edit2 size={16} />
-                                </button>
-                                <button 
-                                    onClick={handleDelete} 
-                                    className="text-gray-400 hover:text-red-600 transition p-1.5 rounded-lg hover:bg-red-50"
-                                    title="Delete post"
-                                >
-                                    <Trash2 size={16} />
-                                </button>
-                            </>
-                        )}
-                        {post.user_id && post.user_id !== currentUser?.id && (
-                            <FollowButton 
-                                userId={post.user_id} 
-                                username={post.profiles?.username}
-                                onFollowChange={onRefresh}
-                            />
-                        )}
-                    </div>
+
+                    {showFollowIcon && (
+                        <button
+                            onClick={handleFollowToggle}
+                            disabled={followLoading}
+                            className="w-7 h-7 rounded-full flex items-center justify-center transition flex-shrink-0 ml-2 bg-green-600 text-white hover:bg-green-700"
+                            title={`Follow @${post.profiles?.username}`}
+                        >
+                            {followLoading ? (
+                                <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                                <UserPlus size={14} />
+                            )}
+                        </button>
+                    )}
+
+                    {post.user_id === currentUser?.id && (
+                        <div className="flex items-center gap-1 ml-2">
+                            <button 
+                                onClick={handleEdit}
+                                className="text-gray-400 hover:text-blue-600 transition p-1.5 rounded-lg hover:bg-blue-50"
+                                title="Edit post"
+                            >
+                                <Edit2 size={16} />
+                            </button>
+                            <button 
+                                onClick={handleDelete} 
+                                className="text-gray-400 hover:text-red-600 transition p-1.5 rounded-lg hover:bg-red-50"
+                                title="Delete post"
+                            >
+                                <Trash2 size={16} />
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
 
             <div className="px-4 pb-2">
-                {post.text && post.text.includes('📊 Multi-Market Bet Slip') ? (
-                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 font-mono text-sm mb-3">
-                        <div className="whitespace-pre-wrap text-gray-800">
-                            {post.text}
-                        </div>
-                    </div>
+                {isSlipPost ? (
+                    renderSlipCard()
                 ) : (
                     <p className="text-gray-800 whitespace-pre-wrap">{post.text}</p>
                 )}

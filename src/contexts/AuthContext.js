@@ -12,6 +12,19 @@ export function AuthProvider({ children }) {
     const [isVerified, setIsVerified] = useState(false)
     const [loading, setLoading] = useState(true)
 
+    // Update last seen timestamp
+    const updateLastSeen = async () => {
+        if (!user) return
+        try {
+            await supabase
+                .from('profiles')
+                .update({ last_seen: new Date().toISOString() })
+                .eq('id', user.id)
+        } catch (error) {
+            console.error('Error updating last seen:', error)
+        }
+    }
+
     useEffect(() => {
         // Check current session
         supabase.auth.getSession().then(({ data: { session } }) => {
@@ -42,6 +55,39 @@ export function AuthProvider({ children }) {
 
         return () => subscription.unsubscribe()
     }, [])
+
+    // Track online status
+    useEffect(() => {
+        if (!user) return
+        
+        // Update immediately
+        updateLastSeen()
+        
+        // Update every 30 seconds
+        const interval = setInterval(updateLastSeen, 30000)
+        
+        // Update when user leaves
+        const handleBeforeUnload = () => {
+            updateLastSeen()
+        }
+        window.addEventListener('beforeunload', handleBeforeUnload)
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                updateLastSeen()
+            } else {
+                // User came back - update immediately
+                updateLastSeen()
+            }
+        })
+        
+        return () => {
+            clearInterval(interval)
+            window.removeEventListener('beforeunload', handleBeforeUnload)
+            document.removeEventListener('visibilitychange', () => {})
+            // Final update when component unmounts
+            updateLastSeen()
+        }
+    }, [user])
 
     const fetchProfile = async (userId) => {
         try {
@@ -81,6 +127,17 @@ export function AuthProvider({ children }) {
             // Normalize email: lowercase + trim
             const normalizedEmail = email.toLowerCase().trim()
 
+            // Check if username already exists
+            const { data: existingUser, error: checkError } = await supabase
+                .from('profiles')
+                .select('username')
+                .eq('username', username)
+                .maybeSingle()
+
+            if (existingUser) {
+                throw new Error('Username already taken. Please choose another.')
+            }
+
             const { data, error } = await supabase.auth.signUp({
                 email: normalizedEmail,
                 password,
@@ -89,10 +146,22 @@ export function AuthProvider({ children }) {
                         username, 
                         full_name: fullName,
                         phone: phone
-                    }
+                    },
+                    emailRedirectTo: `${window.location.origin}/login`
                 }
             })
-            if (error) throw error
+            if (error) {
+                if (error.message.includes('User already registered')) {
+                    throw new Error('An account with this email already exists. Please login.')
+                }
+                if (error.message.includes('Password should be at least')) {
+                    throw new Error('Password must be at least 6 characters.')
+                }
+                if (error.message.includes('rate limit')) {
+                    throw new Error('Too many signup attempts. Please wait a few minutes.')
+                }
+                throw error
+            }
             
             if (data.user) {
                 // ✅ Save email to profiles table
@@ -102,7 +171,8 @@ export function AuthProvider({ children }) {
                         phone: phone,
                         full_name: fullName,
                         username: username,
-                        email: normalizedEmail  // ← Store email in profiles
+                        email: normalizedEmail,
+                        last_seen: new Date().toISOString()
                     })
                     .eq('id', data.user.id)
             }
@@ -127,6 +197,10 @@ export function AuthProvider({ children }) {
             if (error) throw error
             
             await fetchProfile(data.user.id)
+            
+            // Update last seen on login
+            await updateLastSeen()
+            
             return data
         } catch (error) {
             console.error('Sign in error:', error)
@@ -136,6 +210,8 @@ export function AuthProvider({ children }) {
 
     const signOut = async () => {
         try {
+            // Update last seen before signing out
+            await updateLastSeen()
             await supabase.auth.signOut()
             setRole(null)
             setIsAdmin(false)
@@ -221,7 +297,8 @@ export function AuthProvider({ children }) {
         refreshProfile,
         updateAvatar,
         updateProfile,
-        fetchProfile
+        fetchProfile,
+        updateLastSeen
     }
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
