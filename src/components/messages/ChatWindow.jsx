@@ -16,7 +16,6 @@ import {
     Trash2
 } from 'lucide-react'
 import VerifiedBadge from '../VerifiedBadge'
-import BouncingLoader from '../BouncingLoader'
 
 // ============================================
 // WAVEFORM ANIMATION COMPONENT
@@ -64,7 +63,7 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
     const audioChunksRef = useRef([])
     const timerIntervalRef = useRef(null)
     const isMounted = useRef(true)
-    const [loadAttempted, setLoadAttempted] = useState(false)
+    const loadAttempted = useRef(false)
 
     // Cleanup on unmount
     useEffect(() => {
@@ -87,10 +86,11 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
         }
     }, [userId, propOtherUser])
 
-    // Load messages
+    // Load messages - ONLY WHEN userId and user are available
     useEffect(() => {
-        if (userId && user && !loadAttempted) {
-            setLoadAttempted(true)
+        if (userId && user && !loadAttempted.current) {
+            loadAttempted.current = true
+            console.log('📩 Loading messages for chat:', userId)
             loadMessages()
             markMessagesAsRead()
         }
@@ -112,8 +112,10 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
                 schema: 'public',
                 table: 'messages'
             }, (payload) => {
+                // Check if this message belongs to this chat
                 if ((payload.new.sender_id === userId && payload.new.receiver_id === user.id) ||
                     (payload.new.sender_id === user.id && payload.new.receiver_id === userId)) {
+                    console.log('📩 New message received, reloading...')
                     loadMessages()
                 }
             })
@@ -169,27 +171,50 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
     }
 
     const loadMessages = async () => {
-        if (!userId || !user || !isMounted.current) return
+        if (!userId || !user || !isMounted.current) {
+            console.warn('⚠️ Cannot load messages: missing userId or user')
+            return
+        }
 
+        console.log('🔄 Loading messages for chat...')
         setLoading(true)
         try {
+            // ✅ FIXED QUERY - Use a single or() with all conditions
             const { data, error } = await supabase
                 .from('messages')
                 .select('*')
-                .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
-                .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
+                .or(
+                    `sender_id.eq.${user.id},receiver_id.eq.${user.id}`,
+                    `sender_id.eq.${userId},receiver_id.eq.${userId}`
+                )
                 .order('created_at', { ascending: true })
 
-            if (error) throw error
+            if (error) {
+                console.error('❌ Error fetching messages:', error)
+                throw error
+            }
+
+            // Filter messages that belong to this conversation (both sender and receiver match)
+            const filteredMessages = (data || []).filter(msg => 
+                (msg.sender_id === userId && msg.receiver_id === user.id) ||
+                (msg.sender_id === user.id && msg.receiver_id === userId)
+            )
+
+            console.log(`📩 Loaded ${filteredMessages.length} messages`)
             
             if (isMounted.current) {
-                setMessages(data || [])
+                setMessages(filteredMessages)
             }
         } catch (error) {
-            console.error('Error loading messages:', error)
+            console.error('❌ Error loading messages:', error)
+            // Show error but don't keep loading
+            if (isMounted.current) {
+                setMessages([])
+            }
         } finally {
             if (isMounted.current) {
                 setLoading(false)
+                console.log('✅ Loading complete')
             }
         }
     }
@@ -225,7 +250,7 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
         })
     }
 
-    // Voice recording
+    // Voice recording functions (keep your existing ones)
     const startRecording = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -370,6 +395,7 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
             if (error) throw error
             setMessages(prev => [...prev, data])
             if (onMessageSent) onMessageSent()
+            scrollToBottom()
         } catch (error) {
             console.error('Error sending message:', error)
             setNewMessage(content)
@@ -395,10 +421,13 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
     }
 
     // Show loading state
-    if (loading && messages.length === 0) {
+    if (loading) {
         return (
             <div className="flex items-center justify-center h-full">
-                <BouncingLoader size="md" color="green" />
+                <div className="text-center">
+                    <Loader size={32} className="animate-spin text-blue-500 mx-auto mb-2" />
+                    <p className="text-gray-400 text-sm">Loading messages...</p>
+                </div>
             </div>
         )
     }
@@ -410,6 +439,7 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
                 <div className="text-center">
                     <User size={48} className="text-gray-300 mx-auto mb-2" />
                     <p className="text-gray-500">User not found</p>
+                    <button onClick={onBack} className="text-blue-500 text-sm mt-2">Go back</button>
                 </div>
             </div>
         )
@@ -536,7 +566,7 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
                 )}
             </div>
 
-            {/* Voice Recording UI with Waveform */}
+            {/* Voice Recording UI */}
             {isRecording && (
                 <div className="px-4 py-2 sm:py-3 border-t border-gray-200 dark:border-gray-700 bg-red-50 dark:bg-red-900/20 flex-shrink-0">
                     <div className="flex items-center justify-between">
@@ -595,7 +625,7 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
                 </div>
             )}
 
-            {/* Message Input - Fixed at bottom with safe area for mobile */}
+            {/* Message Input - Fixed at bottom */}
             <div className="p-2 sm:p-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0 bg-white dark:bg-gray-800 pb-safe">
                 <form onSubmit={handleSend} className="flex gap-2 items-center">
                     <input
