@@ -12,6 +12,7 @@ import { getTodaysMatches, formatMatch, COMPETITIONS } from '../services/footbal
 import PostCard from '../components/PostCard'
 import BouncingLoader from '../components/BouncingLoader'
 import AdminHighlights from '../components/AdminHighlights'
+import FootballNews from '../components/FootballNews'
 
 // ============================================
 // TRENDING MATCHES SECTION
@@ -29,6 +30,7 @@ function TrendingMatches() {
     { id: COMPETITIONS.SERIE_A, name: 'Serie A', icon: '🇮🇹' },
     { id: COMPETITIONS.LIGUE_1, name: 'Ligue 1', icon: '🇫🇷' },
     { id: COMPETITIONS.CHAMPIONS_LEAGUE, name: 'UCL', icon: '🌟' },
+    { id: COMPETITIONS.PSL, name: 'PSL', icon: '🇿🇦' },
   ]
 
   useEffect(() => {
@@ -368,7 +370,10 @@ export default function Home() {
       {/* Trending Matches Section */}
       <TrendingMatches />
 
-      {/* ✅ Admin Highlights Section - NEW */}
+      {/* Football News Section */}
+      <FootballNews limit={3} />
+
+      {/* Admin Highlights Section */}
       <AdminHighlights />
 
       {/* Feed Section */}

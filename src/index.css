@@ -266,3 +266,26 @@ body {
     background-size: 200% 200%;
     animation: gradient-xy 3s ease infinite;
 }
+/* Tailwind CSS v3+ already has line-clamp utilities */
+/* If you're using an older version, add this: */
+
+.line-clamp-1 {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}

@@ -90,9 +90,9 @@ export default function Matches() {
                     return kickoff >= todayEnd
                 })
             } else if (filter === 'live') {
-                filtered = []
+                filtered = formattedMatches.filter(m => m.status === 'live')
             } else if (filter === 'finished') {
-                filtered = []
+                filtered = formattedMatches.filter(m => m.status === 'finished')
             }
             setMatches(filtered)
         } catch (error) {
@@ -320,6 +320,8 @@ export default function Matches() {
                     <div className="flex items-center gap-2">
                         {isShared && <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">Shared</span>}
                         {!isMatchOpen && !isShared && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Closed</span>}
+                        {match.status === 'live' && <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full animate-pulse">LIVE</span>}
+                        {match.status === 'finished' && <span className="text-xs bg-gray-500 text-white px-2 py-0.5 rounded-full">FT</span>}
                     </div>
                 </div>
 
@@ -334,6 +336,11 @@ export default function Matches() {
                     </div>
                     <div className="flex flex-col items-center">
                         <span className="text-gray-400 text-sm">vs</span>
+                        {(match.status === 'live' || match.status === 'finished') && (
+                            <span className="font-bold text-lg">
+                                {match.score?.home || 0} - {match.score?.away || 0}
+                            </span>
+                        )}
                     </div>
                     <div className="flex items-center gap-3">
                         <span className="font-medium text-gray-800">{awayName}</span>
@@ -347,6 +354,9 @@ export default function Matches() {
 
                 <div className="text-xs text-gray-400 text-center py-1 flex items-center justify-center gap-2">
                     <Calendar size={12} /> {dateStr} at {timeStr}
+                    {match.venue && match.venue !== 'Unknown Venue' && (
+                        <span className="ml-2">📍 {match.venue}</span>
+                    )}
                 </div>
 
                 {canPredict ? (
@@ -372,6 +382,22 @@ export default function Matches() {
         )
     }
 
+    const leagueOptions = [
+        { id: COMPETITIONS.PREMIER_LEAGUE, label: '🏴 Premier League' },
+        { id: COMPETITIONS.LA_LIGA, label: '🇪🇸 La Liga' },
+        { id: COMPETITIONS.BUNDESLIGA, label: '🇩🇪 Bundesliga' },
+        { id: COMPETITIONS.SERIE_A, label: '🇮🇹 Serie A' },
+        { id: COMPETITIONS.LIGUE_1, label: '🇫🇷 Ligue 1' },
+        { id: COMPETITIONS.CHAMPIONS_LEAGUE, label: '🌟 Champions League' },
+        { id: COMPETITIONS.WORLD_CUP, label: '🏆 FIFA World Cup' },
+        { id: COMPETITIONS.EREDIVISIE, label: '🇳🇱 Eredivisie' },
+        { id: COMPETITIONS.BRAZIL_SERIE_A, label: '🇧🇷 Brasileirão' },
+        { id: COMPETITIONS.CHAMPIONSHIP, label: '🏴 Championship' },
+        { id: COMPETITIONS.PRIMEIRA_LIGA, label: '🇵🇹 Primeira Liga' },
+        { id: COMPETITIONS.EUROPEAN_CHAMPIONSHIP, label: '🏆 European Championship' },
+        { id: COMPETITIONS.PSL, label: '🇿🇦 PSL' },
+    ]
+
     return (
         <div className="max-w-6xl mx-auto px-4 py-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
@@ -388,18 +414,9 @@ export default function Matches() {
                         onChange={(e) => setSelectedCompetition(e.target.value)}
                         className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-400"
                     >
-                        <option value={COMPETITIONS.PREMIER_LEAGUE}>Premier League</option>
-                        <option value={COMPETITIONS.LA_LIGA}>La Liga</option>
-                        <option value={COMPETITIONS.BUNDESLIGA}>Bundesliga</option>
-                        <option value={COMPETITIONS.SERIE_A}>Serie A</option>
-                        <option value={COMPETITIONS.LIGUE_1}>Ligue 1</option>
-                        <option value={COMPETITIONS.CHAMPIONS_LEAGUE}>Champions League</option>
-                        <option value={COMPETITIONS.WORLD_CUP}>FIFA World Cup</option>
-                        <option value={COMPETITIONS.EREDIVISIE}>Eredivisie</option>
-                        <option value={COMPETITIONS.BRAZIL_SERIE_A}>Brasileirão</option>
-                        <option value={COMPETITIONS.CHAMPIONSHIP}>Championship</option>
-                        <option value={COMPETITIONS.PRIMEIRA_LIGA}>Primeira Liga</option>
-                        <option value={COMPETITIONS.EUROPEAN_CHAMPIONSHIP}>European Championship</option>
+                        {leagueOptions.map(league => (
+                            <option key={league.id} value={league.id}>{league.label}</option>
+                        ))}
                     </select>
                     
                     <button onClick={() => setFilter('all')} className={`px-4 py-2 rounded-lg text-sm font-medium transition ${filter === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>All</button>

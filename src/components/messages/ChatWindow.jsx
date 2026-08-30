@@ -1,4 +1,5 @@
- import React, { useState, useEffect, useRef } from 'react'
+ // src/components/messages/ChatWindow.jsx
+import React, { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { Link } from 'react-router-dom'
@@ -112,7 +113,6 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
                 schema: 'public',
                 table: 'messages'
             }, (payload) => {
-                // Check if this message belongs to this chat
                 if ((payload.new.sender_id === userId && payload.new.receiver_id === user.id) ||
                     (payload.new.sender_id === user.id && payload.new.receiver_id === userId)) {
                     console.log('📩 New message received, reloading...')
@@ -171,50 +171,35 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
     }
 
     const loadMessages = async () => {
-        if (!userId || !user || !isMounted.current) {
-            console.warn('⚠️ Cannot load messages: missing userId or user')
-            return
-        }
+        if (!userId || !user || !isMounted.current) return
 
-        console.log('🔄 Loading messages for chat...')
         setLoading(true)
         try {
-            // ✅ FIXED QUERY - Use a single or() with all conditions
             const { data, error } = await supabase
                 .from('messages')
                 .select('*')
-                .or(
-                    `sender_id.eq.${user.id},receiver_id.eq.${user.id}`,
-                    `sender_id.eq.${userId},receiver_id.eq.${userId}`
-                )
+                .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+                .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
                 .order('created_at', { ascending: true })
 
-            if (error) {
-                console.error('❌ Error fetching messages:', error)
-                throw error
-            }
+            if (error) throw error
 
-            // Filter messages that belong to this conversation (both sender and receiver match)
             const filteredMessages = (data || []).filter(msg => 
                 (msg.sender_id === userId && msg.receiver_id === user.id) ||
                 (msg.sender_id === user.id && msg.receiver_id === userId)
             )
 
-            console.log(`📩 Loaded ${filteredMessages.length} messages`)
-            
             if (isMounted.current) {
                 setMessages(filteredMessages)
             }
         } catch (error) {
-            console.error('❌ Error loading messages:', error)
-            // Show error but don't keep loading
+            console.error('Error loading messages:', error)
             if (isMounted.current) {
                 setMessages([])
             }
         } finally {
             if (isMounted.current) {
                 setLoading(false)
-                console.log('✅ Loading complete')
             }
         }
     }
@@ -250,7 +235,7 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
         })
     }
 
-    // Voice recording functions (keep your existing ones)
+    // Voice recording functions
     const startRecording = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -337,7 +322,6 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
                 })
 
             if (error) {
-                console.error('Storage upload error:', error)
                 throw new Error('Failed to upload voice message: ' + error.message)
             }
 
@@ -356,7 +340,6 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
                 })
 
             if (msgError) {
-                console.error('Message insert error:', msgError)
                 throw new Error('Failed to save voice message: ' + msgError.message)
             }
 
@@ -413,7 +396,7 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
     // If no userId, show empty state
     if (!userId) {
         return (
-            <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+            <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-gray-50 dark:bg-gray-900">
                 <MessageCircle size={48} className="text-gray-300 dark:text-gray-600 mb-4" />
                 <p className="text-gray-500 dark:text-gray-400">Select a conversation to start chatting</p>
             </div>
@@ -423,7 +406,7 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
     // Show loading state
     if (loading) {
         return (
-            <div className="flex items-center justify-center h-full">
+            <div className="flex items-center justify-center h-full bg-gray-50 dark:bg-gray-900">
                 <div className="text-center">
                     <Loader size={32} className="animate-spin text-blue-500 mx-auto mb-2" />
                     <p className="text-gray-400 text-sm">Loading messages...</p>
@@ -435,7 +418,7 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
     // If no other user found
     if (!otherUser) {
         return (
-            <div className="flex items-center justify-center h-full">
+            <div className="flex items-center justify-center h-full bg-gray-50 dark:bg-gray-900">
                 <div className="text-center">
                     <User size={48} className="text-gray-300 mx-auto mb-2" />
                     <p className="text-gray-500">User not found</p>
@@ -446,27 +429,19 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
     }
 
     return (
-        <div className="flex flex-col h-full bg-white dark:bg-gray-800">
-            {/* Chat Header */}
-            <div className="flex items-center gap-3 p-3 sm:p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+        <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900">
+            {/* ===== CHAT HEADER - NO CALL/VIDEO BUTTONS ===== */}
+            <div className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 z-10 shadow-sm">
                 <button 
                     onClick={onBack}
-                    className="md:hidden p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
+                    className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition flex-shrink-0"
                 >
                     <ArrowLeft size={20} className="text-gray-600 dark:text-gray-300" />
                 </button>
-                {onClose && (
-                    <button 
-                        onClick={onClose}
-                        className="hidden md:flex p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
-                    >
-                        <X size={20} className="text-gray-600 dark:text-gray-300" />
-                    </button>
-                )}
 
-                <Link to={`/profile/${otherUser.id}`} className="flex items-center gap-3 flex-1 min-w-0">
+                <Link to={`/profile/${otherUser.id}`} className="flex items-center gap-2 flex-1 min-w-0">
                     <div className="relative flex-shrink-0">
-                        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gray-200 dark:bg-gray-600 rounded-full flex items-center justify-center overflow-hidden">
+                        <div className="w-9 h-9 bg-gray-200 dark:bg-gray-600 rounded-full flex items-center justify-center overflow-hidden">
                             {otherUser.avatar_url ? (
                                 <img 
                                     src={otherUser.avatar_url} 
@@ -474,16 +449,16 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
                                     className="w-full h-full object-cover"
                                 />
                             ) : (
-                                <User size={16} className="sm:size-18 text-gray-500 dark:text-gray-400" />
+                                <User size={16} className="text-gray-500 dark:text-gray-400" />
                             )}
                         </div>
                         {isOnline && (
-                            <div className="absolute bottom-0 right-0 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-green-500 rounded-full border-2 border-white dark:border-gray-800"></div>
+                            <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white dark:border-gray-800"></div>
                         )}
                     </div>
                     <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                            <span className="font-semibold text-gray-800 dark:text-white text-sm sm:text-base truncate">
+                        <div className="flex items-center gap-1">
+                            <span className="font-semibold text-gray-800 dark:text-white text-sm truncate">
                                 {otherUser.full_name || otherUser.username}
                             </span>
                             {otherUser.is_verified && <VerifiedBadge size="sm" />}
@@ -493,17 +468,26 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
                         </p>
                     </div>
                 </Link>
+
+                {onClose && (
+                    <button 
+                        onClick={onClose}
+                        className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition flex-shrink-0"
+                    >
+                        <X size={18} className="text-gray-500" />
+                    </button>
+                )}
             </div>
 
-            {/* Typing Indicator */}
+            {/* ===== TYPING INDICATOR ===== */}
             {otherUserIsTyping && (
-                <div className="px-4 py-1 text-xs text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
+                <div className="px-3 py-1 text-xs text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
                     {otherUser.full_name || otherUser.username} is typing...
                 </div>
             )}
 
-            {/* Messages - Scrollable area with bottom padding for mobile */}
-            <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 pb-20 md:pb-4">
+            {/* ===== MESSAGES AREA ===== */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
                 {messages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-center">
                         <MessageCircle size={32} className="text-gray-300 dark:text-gray-600 mb-2" />
@@ -522,38 +506,36 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
                             
                             return (
                                 <div key={msg.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
-                                    <div className={`flex items-end gap-2 max-w-[85%] sm:max-w-[75%] ${isOwn ? 'flex-row-reverse' : ''}`}>
+                                    <div className={`flex items-end gap-1.5 max-w-[80%] ${isOwn ? 'flex-row-reverse' : ''}`}>
                                         {!isOwn && showAvatar && (
-                                            <div className="w-6 h-6 sm:w-8 sm:h-8 bg-gray-200 dark:bg-gray-600 rounded-full flex items-center justify-center overflow-hidden flex-shrink-0">
+                                            <div className="w-6 h-6 bg-gray-200 dark:bg-gray-600 rounded-full flex items-center justify-center overflow-hidden flex-shrink-0">
                                                 {otherUser.avatar_url ? (
                                                     <img src={otherUser.avatar_url} alt="" className="w-full h-full object-cover" />
                                                 ) : (
-                                                    <User size={12} className="sm:size-14 text-gray-500" />
+                                                    <User size={10} className="text-gray-500" />
                                                 )}
                                             </div>
                                         )}
-                                        {!isOwn && !showAvatar && <div className="w-6 sm:w-8 flex-shrink-0"></div>}
+                                        {!isOwn && !showAvatar && <div className="w-6 flex-shrink-0"></div>}
                                         
                                         <div>
-                                            <div className={`px-3 py-2 sm:px-4 sm:py-2 rounded-2xl ${
+                                            <div className={`px-3 py-1.5 rounded-2xl text-sm ${
                                                 isOwn 
-                                                    ? 'bg-blue-600 text-white rounded-br-sm' 
-                                                    : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-white rounded-bl-sm'
+                                                    ? 'bg-blue-500 text-white rounded-br-sm' 
+                                                    : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white rounded-bl-sm shadow-sm'
                                             }`}>
                                                 {msg.voice_url ? (
-                                                    <audio src={msg.voice_url} controls className="h-8 max-w-[150px] sm:max-w-[200px]" />
+                                                    <audio src={msg.voice_url} controls className="h-8 max-w-[150px]" />
                                                 ) : (
-                                                    <p className="text-sm break-words">{msg.content}</p>
+                                                    <p className="break-words">{msg.content}</p>
                                                 )}
                                             </div>
-                                            <div className={`flex items-center gap-1 mt-1 text-xs text-gray-400 dark:text-gray-500 ${isOwn ? 'justify-end' : ''}`}>
+                                            <div className={`flex items-center gap-0.5 mt-0.5 text-[10px] text-gray-400 dark:text-gray-500 ${isOwn ? 'justify-end' : ''}`}>
                                                 <span>
                                                     {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                 </span>
                                                 {isOwn && (
-                                                    <span>
-                                                        {msg.read ? <CheckCheck size={14} className="text-blue-500" /> : <Check size={14} />}
-                                                    </span>
+                                                    msg.read ? <CheckCheck size={12} className="text-blue-500" /> : <Check size={12} />
                                                 )}
                                             </div>
                                         </div>
@@ -566,68 +548,62 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
                 )}
             </div>
 
-            {/* Voice Recording UI */}
+            {/* ===== VOICE RECORDING UI ===== */}
             {isRecording && (
-                <div className="px-4 py-2 sm:py-3 border-t border-gray-200 dark:border-gray-700 bg-red-50 dark:bg-red-900/20 flex-shrink-0">
+                <div className="px-3 py-2 border-t border-gray-200 dark:border-gray-700 bg-red-50 dark:bg-red-900/20 flex-shrink-0">
                     <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 sm:gap-3">
-                            <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                                <span className="text-xs sm:text-sm font-medium text-red-600 dark:text-red-400">
-                                    Recording
-                                </span>
+                        <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1.5">
+                                <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></div>
+                                <span className="text-xs font-medium text-red-600 dark:text-red-400">Recording</span>
                             </div>
                             <WaveformAnimation isRecording={isRecording} />
-                            <span className="text-xs sm:text-sm font-mono text-red-600 dark:text-red-400">
-                                {formatTime(recordingTime)}
-                            </span>
+                            <span className="text-xs font-mono text-red-600 dark:text-red-400">{formatTime(recordingTime)}</span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
                             <button
                                 onClick={cancelRecording}
-                                className="p-1.5 sm:p-2 text-gray-500 hover:text-red-500 transition rounded-full hover:bg-red-50 dark:hover:bg-red-900/20"
-                                title="Cancel recording"
+                                className="p-1.5 text-gray-500 hover:text-red-500 transition rounded-full hover:bg-red-50 dark:hover:bg-red-900/20"
                             >
-                                <Trash2 size={16} className="sm:size-18" />
+                                <Trash2 size={16} />
                             </button>
                             <button
                                 onClick={stopRecording}
-                                className="px-3 py-1.5 sm:px-4 sm:py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition flex items-center gap-2 text-xs sm:text-sm"
+                                className="px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-xs flex items-center gap-1"
                             >
-                                <Square size={14} className="sm:size-16" />
-                                Stop
+                                <Square size={12} /> Stop
                             </button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Voice message preview */}
+            {/* ===== VOICE MESSAGE PREVIEW ===== */}
             {audioURL && !isRecording && (
-                <div className="px-3 py-2 sm:px-4 sm:py-2 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 flex items-center gap-2 sm:gap-3 flex-shrink-0">
-                    <audio src={audioURL} controls className="h-8 sm:h-10 flex-1" />
+                <div className="px-3 py-2 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex items-center gap-2 flex-shrink-0">
+                    <audio src={audioURL} controls className="h-8 flex-1" />
                     <button
                         onClick={sendVoiceMessage}
                         disabled={uploadingVoice}
-                        className="p-1.5 sm:p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50"
+                        className="p-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50"
                     >
-                        {uploadingVoice ? <Loader size={14} className="sm:size-18 animate-spin" /> : <Send size={16} className="sm:size-18" />}
+                        {uploadingVoice ? <Loader size={14} className="animate-spin" /> : <Send size={14} />}
                     </button>
                     <button
                         onClick={() => {
                             setAudioBlob(null)
                             setAudioURL(null)
                         }}
-                        className="p-1.5 sm:p-2 text-gray-400 hover:text-red-500 transition"
+                        className="p-1.5 text-gray-400 hover:text-red-500 transition"
                     >
-                        <X size={16} className="sm:size-18" />
+                        <X size={14} />
                     </button>
                 </div>
             )}
 
-            {/* Message Input - Fixed at bottom */}
-            <div className="p-2 sm:p-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0 bg-white dark:bg-gray-800 pb-safe">
-                <form onSubmit={handleSend} className="flex gap-2 items-center">
+            {/* ===== MESSAGE INPUT - FIXED AT BOTTOM ===== */}
+            <div className="flex-shrink-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
+                <form onSubmit={handleSend} className="flex items-center gap-1.5 px-2 py-2">
                     <input
                         ref={inputRef}
                         type="text"
@@ -639,28 +615,26 @@ export default function ChatWindow({ userId, otherUser: propOtherUser, onBack, o
                             }
                         }}
                         placeholder={`Message ${otherUser.full_name || otherUser.username}...`}
-                        className="flex-1 px-3 py-2 sm:px-4 sm:py-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white text-sm"
+                        className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white text-sm min-h-[40px]"
                         disabled={sending || isRecording}
                     />
                     
-                    {/* Voice Recording Button */}
                     {!isRecording && !audioURL && (
                         <button
                             type="button"
                             onClick={startRecording}
                             className="p-2 text-gray-500 hover:text-blue-600 transition rounded-full hover:bg-blue-50 dark:hover:bg-blue-900/20 flex-shrink-0"
-                            title="Record voice message"
                         >
-                            <Mic size={18} className="sm:size-20" />
+                            <Mic size={20} />
                         </button>
                     )}
 
                     <button
                         type="submit"
                         disabled={(!newMessage.trim() && !audioBlob) || sending || isRecording}
-                        className="px-3 py-2 sm:px-4 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 flex items-center gap-1 flex-shrink-0 text-sm"
+                        className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition disabled:opacity-50 flex-shrink-0 w-10 h-10 flex items-center justify-center"
                     >
-                        {sending ? <Loader size={16} className="sm:size-18 animate-spin" /> : <Send size={16} className="sm:size-18" />}
+                        {sending ? <Loader size={18} className="animate-spin" /> : <Send size={18} />}
                     </button>
                 </form>
             </div>

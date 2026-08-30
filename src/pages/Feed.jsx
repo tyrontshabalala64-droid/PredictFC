@@ -44,7 +44,8 @@ export default function Feed() {
     const [highlightedPostId, setHighlightedPostId] = useState(null)
     const [initialLoad, setInitialLoad] = useState(true)
     const observerRef = useRef(null)
-    const POSTS_PER_PAGE = 10
+    const POSTS_PER_PAGE = 15
+    const hasMoreRef = useRef(true) // ✅ Use ref to track hasMore
 
     // ✅ READ THE HIGHLIGHT ID FROM THE URL
     useEffect(() => {
@@ -74,20 +75,32 @@ export default function Feed() {
         }
     }, [])
 
-    // ✅ Load feed with pagination
+    // ✅ Load feed with pagination - FIXED
     const loadFeed = useCallback(async (reset = true) => {
-        if (reset) {
-            setFeedItems([])
-            setPage(0)
-            setHasMore(true)
-            setLoading(true)
-        }
-
-        const currentPage = reset ? 0 : page
-        const start = currentPage * POSTS_PER_PAGE
-        const end = start + POSTS_PER_PAGE - 1
+        if (!user) return
 
         try {
+            let currentPage
+            if (reset) {
+                setFeedItems([])
+                currentPage = 0
+                setPage(0)
+                setHasMore(true)
+                hasMoreRef.current = true
+                setLoading(true)
+            } else {
+                // ✅ Don't load more if already loading or no more
+                if (loadingMore || !hasMoreRef.current) return
+                setLoadingMore(true)
+                currentPage = page
+            }
+
+            const start = currentPage * POSTS_PER_PAGE
+            const end = start + POSTS_PER_PAGE - 1
+
+            console.log(`📰 Loading feed: page=${currentPage}, start=${start}, end=${end}`)
+
+            // Get posts
             let postsQuery = supabase
                 .from('posts')
                 .select(`
@@ -102,6 +115,7 @@ export default function Feed() {
                 .order('created_at', { ascending: false })
                 .range(start, end)
 
+            // Following filter
             if (filter === 'following' && user) {
                 const { data: following } = await supabase
                     .from('followers')
@@ -115,8 +129,10 @@ export default function Feed() {
                     if (reset) {
                         setFeedItems([])
                         setLoading(false)
+                        setHasMore(false)
+                        hasMoreRef.current = false
                     }
-                    setHasMore(false)
+                    setLoadingMore(false)
                     return
                 }
             }
@@ -149,6 +165,7 @@ export default function Feed() {
             const { data: predictionsData, error: predictionsError } = await predictionsQuery
             if (predictionsError) throw predictionsError
 
+            // Combine and sort
             const combined = [
                 ...(postsData || []).map(item => ({ ...item, type: 'post' })),
                 ...(predictionsData || []).map(item => ({ ...item, type: 'prediction' }))
@@ -156,16 +173,24 @@ export default function Feed() {
 
             combined.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
 
+            console.log(`📰 Found ${combined.length} items for page ${currentPage}`)
+
+            // ✅ Check if we have more items
+            const hasMoreItems = combined.length === POSTS_PER_PAGE
+            hasMoreRef.current = hasMoreItems
+
             if (reset) {
                 setFeedItems(combined)
-                setPage(1)
+                setHasMore(hasMoreItems)
+                setPage(1) // ✅ Set page to 1 after first load
             } else {
+                // ✅ Append new items
                 setFeedItems(prev => [...prev, ...combined])
+                setHasMore(hasMoreItems)
                 setPage(prev => prev + 1)
             }
 
-            // Check if there are more items
-            setHasMore(combined.length === POSTS_PER_PAGE)
+            console.log(`📰 Has more: ${hasMoreItems}`)
 
         } catch (error) {
             console.error('Error loading feed:', error)
@@ -177,39 +202,56 @@ export default function Feed() {
             }
             setLoadingMore(false)
         }
-    }, [filter, user, page, showToast])
+    }, [filter, user, page, loadingMore, showToast, POSTS_PER_PAGE])
 
     // ✅ Initial load
     useEffect(() => {
-        loadFeed(true)
-    }, [filter])
+        if (user) {
+            loadFeed(true)
+        }
+    }, [filter, user])
 
-    // ✅ Infinite scroll observer
+    // ✅ Infinite scroll observer - FIXED
     useEffect(() => {
-        if (loading || loadingMore || !hasMore) return
-
+        if (!user) return
+        
+        // ✅ Disconnect previous observer
         if (observerRef.current) {
             observerRef.current.disconnect()
         }
 
-        observerRef.current = new IntersectionObserver((entries) => {
-            if (entries[0].isIntersecting && hasMore && !loadingMore) {
-                setLoadingMore(true)
-                loadFeed(false)
-            }
-        }, { threshold: 0.1, rootMargin: '100px' })
+        // ✅ Only setup observer if we have more items
+        if (!hasMore || loading || loadingMore) {
+            return
+        }
 
         const target = document.getElementById('load-more-trigger')
-        if (target) {
-            observerRef.current.observe(target)
+        if (!target) {
+            console.log('⚠️ Load more trigger not found in DOM')
+            return
         }
+
+        console.log('👀 Setting up intersection observer...')
+
+        observerRef.current = new IntersectionObserver((entries) => {
+            const entry = entries[0]
+            if (entry.isIntersecting && hasMore && !loadingMore && !loading) {
+                console.log('🔄 Intersection triggered - loading more...')
+                loadFeed(false)
+            }
+        }, { 
+            threshold: 0.1, 
+            rootMargin: '200px' // ✅ Increased rootMargin
+        })
+
+        observerRef.current.observe(target)
 
         return () => {
             if (observerRef.current) {
                 observerRef.current.disconnect()
             }
         }
-    }, [loading, loadingMore, hasMore, loadFeed])
+    }, [hasMore, loading, loadingMore, loadFeed, user])
 
     // ✅ SCROLL TO THE HIGHLIGHTED POST
     useEffect(() => {
@@ -383,7 +425,7 @@ export default function Feed() {
     }
 
     return (
-        <div className="max-w-3xl mx-auto px-4 py-6">
+        <div className="max-w-3xl mx-auto px-4 py-6 pb-20">
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                 <div>
@@ -394,7 +436,10 @@ export default function Feed() {
                 </div>
                 <div className="flex gap-2">
                     <button
-                        onClick={() => setFilter('all')}
+                        onClick={() => {
+                            setFilter('all')
+                            loadFeed(true)
+                        }}
                         className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1 ${
                             filter === 'all'
                                 ? 'bg-gray-800 text-white'
@@ -404,7 +449,10 @@ export default function Feed() {
                         <Filter size={16} /> All
                     </button>
                     <button
-                        onClick={() => setFilter('following')}
+                        onClick={() => {
+                            setFilter('following')
+                            loadFeed(true)
+                        }}
                         className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1 ${
                             filter === 'following'
                                 ? 'bg-gray-800 text-white'
@@ -488,78 +536,80 @@ export default function Feed() {
             </div>
 
             {/* Create Post */}
-            <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 mb-6">
-                <div className="flex items-center gap-3 mb-3">
-                    <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 font-bold overflow-hidden">
-                        {profile?.avatar_url ? (
-                            <img src={profile.avatar_url} alt={profile.username} className="w-full h-full object-cover" />
-                        ) : (
-                            profile?.username?.[0]?.toUpperCase() || 'U'
+            {user && (
+                <div className="bg-gray-50 rounded-xl border border-gray-200 p-4 mb-6">
+                    <div className="flex items-center gap-3 mb-3">
+                        <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 font-bold overflow-hidden">
+                            {profile?.avatar_url ? (
+                                <img src={profile.avatar_url} alt={profile.username} className="w-full h-full object-cover" />
+                            ) : (
+                                profile?.username?.[0]?.toUpperCase() || 'U'
+                            )}
+                        </div>
+                        <span className="font-semibold text-gray-700">
+                            {profile?.full_name || profile?.username || 'User'}
+                        </span>
+                        {sharedSlip && (
+                            <span className="ml-auto text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded-full flex items-center gap-1">
+                                <ShoppingBag size={12} /> Slip Ready
+                            </span>
                         )}
                     </div>
-                    <span className="font-semibold text-gray-700">
-                        {profile?.full_name || profile?.username || 'User'}
-                    </span>
-                    {sharedSlip && (
-                        <span className="ml-auto text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded-full flex items-center gap-1">
-                            <ShoppingBag size={12} /> Slip Ready
-                        </span>
-                    )}
+
+                    <form onSubmit={handleCreatePost}>
+                        <textarea
+                            value={newPost}
+                            onChange={(e) => setNewPost(e.target.value)}
+                            placeholder={sharedSlip ? "Your bet slip is ready! Add a comment and share..." : "What's on your mind?"}
+                            className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white text-gray-800 resize-none"
+                            rows="3"
+                        />
+
+                        {imagePreview && (
+                            <div className="relative mt-3">
+                                <img 
+                                    src={imagePreview} 
+                                    alt="Preview" 
+                                    className="max-h-64 rounded-lg object-contain bg-gray-50"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={removeImage}
+                                    className="absolute top-2 right-2 bg-gray-800 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-gray-700"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+                        )}
+
+                        <div className="flex items-center justify-between mt-3">
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-sm flex items-center gap-1"
+                                >
+                                    <ImageIcon size={16} /> Add Image
+                                </button>
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={handleImageUpload}
+                                    className="hidden"
+                                />
+                            </div>
+                            <button
+                                type="submit"
+                                disabled={posting || (!newPost.trim() && !selectedImage)}
+                                className="px-6 py-2 bg-gray-800 text-white rounded-lg font-semibold hover:bg-gray-900 transition disabled:opacity-50 flex items-center gap-1"
+                            >
+                                <Send size={16} /> {posting ? 'Posting...' : 'Post'}
+                            </button>
+                        </div>
+                    </form>
                 </div>
-
-                <form onSubmit={handleCreatePost}>
-                    <textarea
-                        value={newPost}
-                        onChange={(e) => setNewPost(e.target.value)}
-                        placeholder={sharedSlip ? "Your bet slip is ready! Add a comment and share..." : "What's on your mind?"}
-                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white text-gray-800 resize-none"
-                        rows="3"
-                    />
-
-                    {imagePreview && (
-                        <div className="relative mt-3">
-                            <img 
-                                src={imagePreview} 
-                                alt="Preview" 
-                                className="max-h-64 rounded-lg object-contain bg-gray-50"
-                            />
-                            <button
-                                type="button"
-                                onClick={removeImage}
-                                className="absolute top-2 right-2 bg-gray-800 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-gray-700"
-                            >
-                                <X size={18} />
-                            </button>
-                        </div>
-                    )}
-
-                    <div className="flex items-center justify-between mt-3">
-                        <div className="flex gap-2">
-                            <button
-                                type="button"
-                                onClick={() => fileInputRef.current?.click()}
-                                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-sm flex items-center gap-1"
-                            >
-                                <ImageIcon size={16} /> Add Image
-                            </button>
-                            <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept="image/*"
-                                onChange={handleImageUpload}
-                                className="hidden"
-                            />
-                        </div>
-                        <button
-                            type="submit"
-                            disabled={posting || (!newPost.trim() && !selectedImage)}
-                            className="px-6 py-2 bg-gray-800 text-white rounded-lg font-semibold hover:bg-gray-900 transition disabled:opacity-50 flex items-center gap-1"
-                        >
-                            <Send size={16} /> {posting ? 'Posting...' : 'Post'}
-                        </button>
-                    </div>
-                </form>
-            </div>
+            )}
 
             {/* Feed Items */}
             {loading && feedItems.length === 0 ? (
@@ -593,21 +643,15 @@ export default function Feed() {
                     </div>
                     
                     {/* ✅ Infinite Scroll Trigger */}
-                    {hasMore && (
-                        <div id="load-more-trigger" className="flex justify-center py-4">
-                            {loadingMore ? (
-                                <BouncingLoader size="sm" color="green" text="Loading more..." />
-                            ) : (
-                                <p className="text-gray-400 text-sm">Scroll for more</p>
-                            )}
-                        </div>
-                    )}
-                    
-                    {!hasMore && feedItems.length > 0 && (
-                        <p className="text-center text-gray-400 text-sm py-4">
-                            You've seen all posts 🎉
-                        </p>
-                    )}
+                    <div id="load-more-trigger" className="flex justify-center py-6">
+                        {loadingMore ? (
+                            <BouncingLoader size="sm" color="green" text="Loading more..." />
+                        ) : hasMore ? (
+                            <p className="text-gray-400 text-sm animate-pulse">↓ Scroll for more ↓</p>
+                        ) : (
+                            <p className="text-gray-400 text-sm">🎉 You've seen all posts!</p>
+                        )}
+                    </div>
                 </>
             )}
         </div>

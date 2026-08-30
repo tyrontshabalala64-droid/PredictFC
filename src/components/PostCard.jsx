@@ -24,6 +24,7 @@ import ReactionButtons from './ReactionButtons'
 import CommentSection from './CommentSection'
 import VerifiedBadge from './VerifiedBadge'
 import ProfilePicture from './ProfilePicture'
+import { getSlipByPostId } from '../services/slipTrackingService'
 
 export default function PostCard({ post, onRefresh, currentUser }) {
     const [showComments, setShowComments] = useState(false)
@@ -44,6 +45,9 @@ export default function PostCard({ post, onRefresh, currentUser }) {
     const [isFollowing, setIsFollowing] = useState(false)
     const [followLoading, setFollowLoading] = useState(false)
     const [copied, setCopied] = useState(false)
+    const [slipStatus, setSlipStatus] = useState(null)
+    const [slipReturn, setSlipReturn] = useState(null)
+    const [slipLoading, setSlipLoading] = useState(false)
 
     useEffect(() => {
         if (post.reactions) {
@@ -66,7 +70,28 @@ export default function PostCard({ post, onRefresh, currentUser }) {
         if (currentUser && post.user_id && post.user_id !== currentUser.id) {
             checkFollowStatus()
         }
-    }, [post.reactions, currentUser, post.user_id])
+
+        // ✅ Load slip status if this is a slip post
+        if (post.text && (post.text.includes('📊 Multi-Market Bet Slip') || post.text.includes('Multi-Market Bet Slip'))) {
+            loadSlipStatus()
+        }
+    }, [post.reactions, currentUser, post.user_id, post.id, post.text])
+
+    const loadSlipStatus = async () => {
+        if (slipLoading) return
+        setSlipLoading(true)
+        try {
+            const slip = await getSlipByPostId(post.id)
+            if (slip) {
+                setSlipStatus(slip.status)
+                setSlipReturn(slip.actual_return)
+            }
+        } catch (error) {
+            console.error('Error loading slip status:', error)
+        } finally {
+            setSlipLoading(false)
+        }
+    }
 
     const checkFollowStatus = async () => {
         if (!currentUser || !post.user_id) return
@@ -259,13 +284,34 @@ export default function PostCard({ post, onRefresh, currentUser }) {
         const matches = []
         let currentMatch = null
         let totalReturn = null
+        let totalOdds = null
+        let stake = null
         
         for (const line of lines) {
             if (line.includes('📊 Multi-Market Bet Slip')) continue
             if (line.includes('━━━━━━━━━━━━━━━━━━━━━━━━━')) continue
             
-            if (line.includes('💰 Total Potential Return:')) {
-                const match = line.match(/💰 Total Potential Return:\s*([\d.]+)x/)
+            // ✅ Parse Stake
+            if (line.includes('Stake:')) {
+                const match = line.match(/Stake:\s*R([\d.]+)/)
+                if (match) {
+                    stake = match[1]
+                }
+                continue
+            }
+            
+            // ✅ Parse Total Odds
+            if (line.includes('Total Odds:')) {
+                const match = line.match(/Total Odds:\s*([\d.]+)x/)
+                if (match) {
+                    totalOdds = match[1]
+                }
+                continue
+            }
+            
+            // ✅ Parse Total Return
+            if (line.includes('Total Return:')) {
+                const match = line.match(/Total Return:\s*R([\d.]+)/)
                 if (match) {
                     totalReturn = match[1]
                 }
@@ -286,7 +332,7 @@ export default function PostCard({ post, onRefresh, currentUser }) {
             }
             
             if (currentMatch && line.includes('•')) {
-                const marketMatch = line.match(/•\s+(.+?):\s+(.+?)\s+\(([\d.]+)\)/)
+                const marketMatch = line.match(/•\s+(.+?):\s+(.+?)\s+@([\d.]+)/)
                 if (marketMatch) {
                     currentMatch.markets.push({
                         name: marketMatch[1].trim(),
@@ -297,8 +343,8 @@ export default function PostCard({ post, onRefresh, currentUser }) {
                 continue
             }
             
-            if (currentMatch && line.includes('Total Odds:')) {
-                const oddsMatch = line.match(/Total Odds:\s*([\d.]+)/)
+            if (currentMatch && line.includes('Combined Odds:')) {
+                const oddsMatch = line.match(/Combined Odds:\s*([\d.]+)/)
                 if (oddsMatch) {
                     currentMatch.totalOdds = oddsMatch[1]
                 }
@@ -310,7 +356,7 @@ export default function PostCard({ post, onRefresh, currentUser }) {
             matches.push(currentMatch)
         }
         
-        return { matches, totalReturn }
+        return { matches, totalReturn, totalOdds, stake }
     }
 
     const copySlipToClipboard = (e) => {
@@ -327,6 +373,24 @@ export default function PostCard({ post, onRefresh, currentUser }) {
             })
     }
 
+    // ✅ Get status badge
+    const getStatusBadge = () => {
+        if (!slipStatus || slipStatus === 'pending') {
+            return <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1">⏳ Pending</span>
+        }
+        switch(slipStatus) {
+            case 'won':
+                return <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1">✅ WON</span>
+            case 'lost':
+                return <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1">❌ LOST</span>
+            case 'partial':
+                return <span className="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1">⚠️ PARTIAL</span>
+            default:
+                return null
+        }
+    }
+
+    // ✅ UPDATED: renderSlipCard with GREEN theme styling and status
     const renderSlipCard = () => {
         const parsed = parseSlipContent(post.text)
         if (!parsed || parsed.matches.length === 0) {
@@ -339,21 +403,26 @@ export default function PostCard({ post, onRefresh, currentUser }) {
             )
         }
 
-        const { matches, totalReturn } = parsed
+        const { matches, totalReturn, totalOdds, stake } = parsed
 
         return (
-            <div className="relative">
-                {/* ✅ Top Accent Bar - Makes it stand out */}
-                <div className="absolute -top-0.5 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-green-500 to-blue-500 rounded-t-xl"></div>
+            <div className="relative mt-2">
+                {/* ✅ Green Top Accent Bar */}
+                <div className="absolute -top-0.5 left-0 right-0 h-1 bg-gradient-to-r from-green-500 via-emerald-400 to-green-500 rounded-t-xl"></div>
                 
-                {/* ✅ Slip Label Badge */}
-                <div className="absolute -top-2 left-4 bg-blue-600 text-white text-[10px] font-bold px-3 py-0.5 rounded-full shadow-md flex items-center gap-1.5 z-10">
+                {/* ✅ Green Slip Label Badge */}
+                <div className="absolute -top-2 left-4 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-[10px] font-bold px-3 py-0.5 rounded-full shadow-md flex items-center gap-1.5 z-10">
                     <Ticket size={10} />
                     SLIP
                 </div>
 
-                <div className="bg-white border border-gray-200 rounded-xl p-4 pt-5 shadow-md relative overflow-hidden">
-                    {/* ✅ Subtle Background Pattern - Watermark Ticket Icon */}
+                {/* ✅ Status Badge - Top Right */}
+                <div className="absolute -top-2 right-4 z-10">
+                    {getStatusBadge()}
+                </div>
+
+                <div className="bg-white border-2 border-gray-200 rounded-xl p-4 pt-5 shadow-md relative overflow-hidden">
+                    {/* Subtle Watermark Ticket Icon */}
                     <div className="absolute -bottom-6 -right-6 opacity-5">
                         <Ticket size={120} />
                     </div>
@@ -370,7 +439,7 @@ export default function PostCard({ post, onRefresh, currentUser }) {
                     {/* Header */}
                     <div className="text-center mb-3">
                         <div className="flex items-center justify-center gap-2 text-gray-800 font-bold text-sm tracking-wider">
-                            <Ticket size={16} className="text-blue-600" />
+                            <Ticket size={16} className="text-green-600" />
                             <span>BET SLIP</span>
                         </div>
                         <div className="h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent my-2"></div>
@@ -379,15 +448,15 @@ export default function PostCard({ post, onRefresh, currentUser }) {
                     {/* Matches */}
                     {matches.map((match, index) => (
                         <div key={index} className="mb-3">
-                            {/* Match Header */}
+                            {/* Match Header with Green Number Badge */}
                             <div className="text-gray-800 font-semibold text-sm flex items-center gap-1.5">
-                                <span className="text-blue-500 font-bold text-xs bg-blue-50 px-1.5 py-0.5 rounded">
+                                <span className="text-green-600 font-bold text-xs bg-green-50 px-1.5 py-0.5 rounded border border-green-200">
                                     {index + 1}
                                 </span>
                                 <span>{match.homeTeam} vs {match.awayTeam}</span>
                             </div>
                             
-                            {/* Markets */}
+                            {/* Markets with Green Bullets */}
                             {match.markets.map((market, i) => (
                                 <div key={i} className="flex justify-between text-gray-600 text-sm ml-6 mt-0.5">
                                     <span className="flex items-center gap-1.5">
@@ -398,11 +467,11 @@ export default function PostCard({ post, onRefresh, currentUser }) {
                                 </div>
                             ))}
                             
-                            {/* Match Total Odds */}
+                            {/* Combined Odds - Green Theme */}
                             {match.totalOdds && (
-                                <div className="flex justify-between text-blue-600 text-sm mt-1 ml-6 bg-blue-50 px-2 py-0.5 rounded">
+                                <div className="flex justify-between text-green-700 text-sm mt-1 ml-6 bg-green-50 px-2 py-0.5 rounded border border-green-100">
                                     <span className="flex items-center gap-1.5">
-                                        <TrendingUp size={10} />
+                                        <TrendingUp size={12} />
                                         Combined Odds
                                     </span>
                                     <span className="font-bold">{match.totalOdds}</span>
@@ -416,14 +485,37 @@ export default function PostCard({ post, onRefresh, currentUser }) {
                         </div>
                     ))}
 
-                    {/* Footer */}
+                    {/* Footer with Green Theme */}
                     <div className="h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent my-2"></div>
-                    <div className="flex justify-between items-center">
+                    <div className="flex flex-wrap justify-between items-center gap-2">
+                        <div className="flex items-center gap-3">
+                            {stake && (
+                                <span className="text-gray-700 font-medium text-sm flex items-center gap-1">
+                                    <DollarSign size={14} className="text-green-600" />
+                                    Stake: R{stake}
+                                </span>
+                            )}
+                            {totalOdds && (
+                                <span className="text-gray-700 font-medium text-sm flex items-center gap-1">
+                                    <TrendingUp size={14} className="text-green-600" />
+                                    Odds: {totalOdds}x
+                                </span>
+                            )}
+                        </div>
                         <span className="text-green-600 font-bold flex items-center gap-1.5 text-sm">
                             <DollarSign size={14} />
-                            Total Return: {totalReturn || '0.00'}x
+                            Total Return: R{totalReturn || '0.00'}
                         </span>
-                        <span className="text-gray-400 text-xs flex items-center gap-1">
+                    </div>
+                    {slipStatus && slipStatus !== 'pending' && (
+                        <div className="mt-1 text-right">
+                            <span className="text-xs text-gray-400">
+                                Settled: {new Date().toLocaleDateString()}
+                            </span>
+                        </div>
+                    )}
+                    <div className="mt-1 text-right">
+                        <span className="text-gray-400 text-xs flex items-center justify-end gap-1">
                             <Calendar size={10} />
                             {new Date(post.created_at).toLocaleDateString()} • {matches.reduce((acc, m) => acc + m.markets.length, 0)} picks
                         </span>
@@ -479,7 +571,7 @@ export default function PostCard({ post, onRefresh, currentUser }) {
     }
 
     const showFollowIcon = currentUser && post.user_id && post.user_id !== currentUser.id && !isFollowing
-    const isSlipPost = post.text && post.text.includes('📊 Multi-Market Bet Slip')
+    const isSlipPost = post.text && (post.text.includes('📊 Multi-Market Bet Slip') || post.text.includes('Multi-Market Bet Slip'))
 
     return (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
