@@ -2,7 +2,7 @@
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'  // ✅ ADD useNavigate
 import { 
   Calendar, 
   Clock, 
@@ -12,7 +12,8 @@ import {
   Loader,
   Search,
   BarChart3,
-  Globe
+  Globe,
+  ChevronRight
 } from 'lucide-react'
 import BouncingLoader from '../components/BouncingLoader'
 import { getTodaysMatches, formatMatch, COMPETITIONS } from '../services/footballApi'
@@ -21,6 +22,7 @@ import { getMockOdds } from '../services/oddsService'
 export default function Matches() {
     const { user, profile } = useAuth()
     const { showToast } = useToast()
+    const navigate = useNavigate()  // ✅ ADD navigate
     const [allMatches, setAllMatches] = useState([])
     const [matches, setMatches] = useState([])
     const [loading, setLoading] = useState(true)
@@ -143,23 +145,34 @@ export default function Matches() {
         }
     }
 
-    const openPredictionModal = (match) => {
+    // ✅ NEW: Navigate to Slip page with match data
+    const handlePredict = (match) => {
         if (!user) {
             showToast('Please sign in to make predictions', 'warning')
             return
         }
-        setSelectedMatch(match)
-        setSelectedMarkets([])
+
+        // Save match to localStorage so Slip page can load it
+        const matchData = {
+            id: match.id || match.matchId,
+            homeTeam: match.homeTeam,
+            awayTeam: match.awayTeam,
+            league: match.league,
+            kickoff: match.kickoff,
+            matchId: match.id || match.matchId
+        }
         
-        const matchOdds = getMockOdds(
-            match.id || match.matchId || 'match-123',
-            match.homeTeam?.name || 'Home',
-            match.awayTeam?.name || 'Away'
-        )
-        setOdds(matchOdds)
+        // Store in localStorage for the Slip page to pick up
+        localStorage.setItem('predictfc_selected_match', JSON.stringify(matchData))
         
-        setIsPublic(true)
-        setShowModal(true)
+        // Navigate to Slip page
+        navigate('/slip')
+    }
+
+    // Remove the modal functions since we're not using them anymore
+    const openPredictionModal = (match) => {
+        // ✅ Redirect to Slip instead
+        handlePredict(match)
     }
 
     const closeModal = () => {
@@ -170,133 +183,15 @@ export default function Matches() {
     }
 
     const toggleMarket = (marketType, option) => {
-        setSelectedMarkets(prev => {
-            const existing = prev.findIndex(m => m.type === marketType)
-            
-            const marketLabels = {
-                'match_result': 'Match Result',
-                'over_under_25': 'Over/Under 2.5 Goals',
-                'btts': 'Both Teams to Score',
-                'corners': 'Total Corners',
-                'total_goals_15': 'Total Goals (1.5)'
-            }
-
-            if (existing !== -1 && prev[existing].pick === option.pick) {
-                return prev.filter((_, i) => i !== existing)
-            }
-
-            if (existing !== -1) {
-                const newMarkets = [...prev]
-                newMarkets[existing] = {
-                    type: marketType,
-                    pick: option.pick,
-                    odds: option.odds,
-                    label: marketLabels[marketType] || option.pick
-                }
-                return newMarkets
-            }
-
-            return [...prev, {
-                type: marketType,
-                pick: option.pick,
-                odds: option.odds,
-                label: marketLabels[marketType] || option.pick
-            }]
-        })
+        // Not used anymore - kept for compatibility
     }
 
     const isMarketSelected = (marketType, pick) => {
-        return selectedMarkets.some(m => m.type === marketType && m.pick === pick)
+        return false
     }
 
     const handleSubmitPrediction = async () => {
-        if (!selectedMatch || !user) return
-        if (selectedMarkets.length === 0) {
-            showToast('Please select at least one market', 'warning')
-            return
-        }
-
-        setSubmitting(true)
-        try {
-            const matchId = selectedMatch.id || selectedMatch.matchId || `match-${Date.now()}`
-            const homeTeam = selectedMatch.homeTeam?.name || 'Home'
-            const awayTeam = selectedMatch.awayTeam?.name || 'Away'
-
-            const predictionData = {
-                matchId,
-                homeTeam,
-                awayTeam,
-                matchName: `${homeTeam} vs ${awayTeam}`,
-                markets: selectedMarkets,
-                isPublic
-            }
-
-            if (isPublic) {
-                const { error } = await supabase
-                    .from('public_predictions')
-                    .insert({
-                        user_id: user.id,
-                        match_id: matchId,
-                        prediction_data: predictionData
-                    })
-                if (error) throw error
-
-                await supabase
-                    .from('profiles')
-                    .update({ 
-                        points: (profile?.points || 0) + 10,
-                        predictions_count: (profile?.predictions_count || 0) + 1
-                    })
-                    .eq('id', user.id)
-
-                showToast('Prediction shared publicly! You earned 10 points!', 'success')
-
-            } else {
-                const communityIdToUse = communityId
-                if (!communityIdToUse) {
-                    showToast('Please select a community first!', 'error')
-                    setSubmitting(false)
-                    return
-                }
-
-                const { data: communityData } = await supabase
-                    .from('communities')
-                    .select('id')
-                    .eq('id', communityIdToUse)
-                    .eq('creator_id', user.id)
-                    .maybeSingle()
-
-                if (!communityData) {
-                    showToast('You can only share predictions to communities you created!', 'error')
-                    setSubmitting(false)
-                    return
-                }
-
-                const { error } = await supabase
-                    .from('community_posts')
-                    .insert({
-                        community_id: communityIdToUse,
-                        user_id: user.id,
-                        match_id: matchId,
-                        text: `Multi-market prediction for ${homeTeam} vs ${awayTeam}`,
-                        prediction_data: predictionData
-                    })
-                if (error) throw error
-
-                showToast('Prediction shared in your community!', 'success')
-            }
-
-            setSharedPredictions(prev => ({ ...prev, [matchId]: true }))
-            closeModal()
-            await loadMatches()
-            await loadUserSharedPredictions()
-
-        } catch (error) {
-            console.error('Error submitting prediction:', error)
-            showToast('Failed to submit prediction: ' + error.message, 'error')
-        } finally {
-            setSubmitting(false)
-        }
+        // Not used anymore - predictions go through Slip
     }
 
     const renderMatchCard = (match) => {
@@ -361,8 +256,8 @@ export default function Matches() {
 
                 {canPredict ? (
                     <button 
-                        onClick={() => openPredictionModal(match)}
-                        className="w-full mt-3 py-2 rounded-lg font-medium transition flex items-center justify-center gap-1 bg-gray-800 text-white hover:bg-gray-900"
+                        onClick={() => handlePredict(match)}
+                        className="w-full mt-3 py-2 rounded-lg font-medium transition flex items-center justify-center gap-1 bg-gradient-to-r from-green-600 to-emerald-600 text-white hover:from-green-700 hover:to-emerald-700 shadow-sm"
                     >
                         <Share2 size={16} /> Predict
                     </button>
@@ -399,13 +294,13 @@ export default function Matches() {
     ]
 
     return (
-        <div className="max-w-6xl mx-auto px-4 py-6">
+        <div className="max-w-6xl mx-auto px-4 py-6 pb-20">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
                         <Calendar size={24} /> Matches
                     </h1>
-                    <p className="text-gray-400 text-sm">View matches and share your multi-market predictions</p>
+                    <p className="text-gray-400 text-sm">View matches and add them to your bet slip</p>
                 </div>
                 
                 <div className="flex flex-wrap gap-2">
@@ -458,139 +353,7 @@ export default function Matches() {
                 </div>
             )}
 
-            {showModal && selectedMatch && odds && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                        <div className="p-6">
-                            <div className="flex justify-between items-center mb-4">
-                                <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                                    <BarChart3 size={20} /> Multi-Market Prediction
-                                </h2>
-                                <button onClick={closeModal} className="text-gray-400 hover:text-gray-600">
-                                    <XCircle size={24} />
-                                </button>
-                            </div>
-
-                            <div className="bg-gray-100 rounded-lg p-4 mb-4 text-center border border-gray-200">
-                                <div className="flex items-center justify-center gap-3 font-semibold text-gray-800 text-lg">
-                                    <span>{selectedMatch.homeTeam?.name || 'Home'}</span>
-                                    <span className="text-gray-400 text-sm">vs</span>
-                                    <span>{selectedMatch.awayTeam?.name || 'Away'}</span>
-                                </div>
-                                <div className="text-sm text-gray-400 mt-1">
-                                    {selectedMatch.league || 'Unknown League'}
-                                </div>
-                            </div>
-
-                            <div className="space-y-4">
-                                {selectedMarkets.length > 0 && (
-                                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <span className="text-sm font-medium text-green-700">Your selections ({selectedMarkets.length})</span>
-                                            <button
-                                                onClick={() => setSelectedMarkets([])}
-                                                className="text-xs text-red-500 hover:text-red-700"
-                                            >
-                                                Clear all
-                                            </button>
-                                        </div>
-                                        <div className="space-y-1">
-                                            {selectedMarkets.map((m, i) => (
-                                                <div key={i} className="flex justify-between text-sm text-green-700">
-                                                    <span>{m.label}: <strong>{m.pick}</strong></span>
-                                                    <span>@{m.odds.toFixed(2)}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                        <div className="mt-2 pt-2 border-t border-green-200 text-sm text-green-700 flex justify-between">
-                                            <span>Total selections</span>
-                                            <span className="font-bold">{selectedMarkets.length}</span>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {Object.entries(odds).map(([key, market]) => (
-                                    <div key={key} className="border border-gray-200 rounded-lg p-3">
-                                        <h4 className="font-medium text-gray-700 mb-2">{market.label}</h4>
-                                        <div className="flex flex-wrap gap-2">
-                                            {market.options.map((option, i) => {
-                                                const selected = isMarketSelected(key, option.pick)
-                                                return (
-                                                    <button
-                                                        key={i}
-                                                        onClick={() => toggleMarket(key, option)}
-                                                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-2 ${
-                                                            selected
-                                                                ? 'bg-green-600 text-white'
-                                                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                                        }`}
-                                                    >
-                                                        <span>{option.pick}</span>
-                                                        <span className={selected ? 'text-green-200' : 'text-gray-400'}>
-                                                            @{option.odds.toFixed(2)}
-                                                        </span>
-                                                    </button>
-                                                )
-                                            })}
-                                        </div>
-                                    </div>
-                                ))}
-
-                                <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-                                    <label className="flex items-center gap-3 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={isPublic}
-                                            onChange={(e) => setIsPublic(e.target.checked)}
-                                            className="w-5 h-5 accent-gray-800"
-                                        />
-                                        <div>
-                                            <span className="font-medium text-gray-700">
-                                                {isPublic ? 'Make this prediction public' : 'Keep private in community'}
-                                            </span>
-                                            <p className="text-sm text-gray-400">
-                                                {isPublic ? 'Anyone can see this on the global Feed' : 'Only members of your community can see this'}
-                                            </p>
-                                        </div>
-                                    </label>
-                                </div>
-
-                                {!isPublic && userCommunities.length > 0 && (
-                                    <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">Choose Community</label>
-                                        <select
-                                            value={communityId}
-                                            onChange={(e) => setCommunityId(e.target.value)}
-                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-800 bg-white text-gray-800"
-                                        >
-                                            {userCommunities.map(c => (
-                                                <option key={c.id} value={c.id}>{c.name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                )}
-
-                                {!isPublic && userCommunities.length === 0 && (
-                                    <div className="bg-yellow-50 rounded-lg p-3 border border-yellow-200">
-                                        <p className="text-sm text-yellow-700">
-                                            You need to <Link to="/community/create" className="font-semibold underline">create a community</Link> first to share private predictions!
-                                        </p>
-                                    </div>
-                                )}
-
-                                <button
-                                    onClick={handleSubmitPrediction}
-                                    disabled={submitting || selectedMarkets.length === 0}
-                                    className="w-full bg-gray-800 text-white py-3 rounded-lg font-semibold hover:bg-gray-900 transition disabled:opacity-50 flex items-center justify-center gap-2"
-                                >
-                                    {submitting ? <Loader className="w-5 h-5 animate-spin" /> : <Share2 size={18} />}
-                                    {submitting ? 'Sharing...' : `Share Prediction (${selectedMarkets.length} markets)`}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* ===== REMOVED MODAL - Predictions now go through Slip ===== */}
         </div>
     )
 }

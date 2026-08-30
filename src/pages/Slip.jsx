@@ -49,6 +49,7 @@ export default function Slip() {
     const [stake, setStake] = useState('')
     
     const [submitting, setSubmitting] = useState(false)
+    const [autoLoadAttempted, setAutoLoadAttempted] = useState(false)
 
     useEffect(() => {
         loadMatches()
@@ -66,6 +67,44 @@ export default function Slip() {
             }
         }
     }, [user, selectedCompetition])
+
+    // ✅ AUTO-LOAD MATCH FROM MATCHES PAGE
+    useEffect(() => {
+        if (!autoLoadAttempted && matches.length > 0 && !loading) {
+            const selectedMatchData = localStorage.getItem('predictfc_selected_match')
+            if (selectedMatchData) {
+                try {
+                    const matchData = JSON.parse(selectedMatchData)
+                    console.log('📋 Loading selected match from Matches:', matchData)
+                    
+                    // Find the match in the matches list
+                    const matchInList = matches.find(m => 
+                        m.id === matchData.id || m.matchId === matchData.id
+                    )
+                    
+                    if (matchInList) {
+                        // Check if match is open
+                        const isMatchOpen = matchInList.kickoff ? new Date(matchInList.kickoff) > new Date() : false
+                        if (isMatchOpen) {
+                            setTimeout(() => {
+                                openSlipModal(matchInList)
+                                showToast(`Added ${matchInList.homeTeam?.name} vs ${matchInList.awayTeam?.name} to slip!`, 'success')
+                            }, 500)
+                        } else {
+                            showToast('This match has already started or finished', 'warning')
+                        }
+                    }
+                    
+                    // Clear it so it doesn't reload on refresh
+                    localStorage.removeItem('predictfc_selected_match')
+                } catch (e) {
+                    console.error('Error loading selected match:', e)
+                    localStorage.removeItem('predictfc_selected_match')
+                }
+            }
+            setAutoLoadAttempted(true)
+        }
+    }, [matches, loading, autoLoadAttempted])
 
     useEffect(() => {
         localStorage.setItem('predictfc_slip', JSON.stringify(slip))
